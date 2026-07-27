@@ -20,16 +20,17 @@ const endSeason = document.getElementById("endSeason");
 const resetExplore = document.getElementById("resetExplore");
 
 const state = {
-  currentScene: 0, // 0..3
-  selectedTeam: "ALL",
-  seasonStart: 2005,
-  seasonEnd: 2024
-};
+    currentScene: 0,
+    selectedTeams: [], 
+    seasonStart: 2005,
+    seasonEnd: 2024,
+    maxTeamsVisible: 8
+  };
 
 const scenes = [
   {
-    title: "Scene 1: League Offense Climbs in the Modern Era",
-    desc: "This guided view shows average goals per game by season. The key message: scoring dipped in the late 1990s/early 2000s, then rose strongly after the mid-2000s.",
+    title: "Scene 1: A Lull in Scoring to a Stark Spike",
+    desc: "The mid-90s showed a drop in scoring coming out of the high-scoring era in the 80s that was highlighted by stars such as Wayne Gretzy, as the league become dominated by defense and goaltending. The mid-2000s were pivotal as the league shifted back to high scoring, highlighted by the likes of Sidney Crosby, Alex Ovechkin, and Patrick Kane for the decades to come.",
     render: renderScene1
   },
   {
@@ -68,7 +69,12 @@ d3.csv(DATA_URL).then(raw => {
     return { season: s, goalsPerGame: +(base + valley + modernBoost + jitter).toFixed(2) };
   });
 
-  const teams = ["BOS","COL","EDM","FLA","NYR","TBL","TOR","VAN","VGK","WPG"];
+  const teams = [
+    "ANA","ARI","BOS","BUF","CAR","CBJ","CGY","CHI","COL","DAL","DET","EDM",
+    "FLA","LAK","MIN","MTL","NJD","NSH","NYI","NYR","OTT","PHI","PIT","SEA",
+    "SJS","STL","TBL","TOR","UTA","VAN","VGK","WPG"
+  ];
+  
   teamData = [];
   teams.forEach((team, tIdx) => {
     seasons.forEach((s, i) => {
@@ -89,56 +95,66 @@ d3.csv(DATA_URL).then(raw => {
 });
 
 function initControls() {
-  const teams = Array.from(new Set(teamData.map(d => d.team))).sort();
-  teamSelect.innerHTML = `<option value="ALL">ALL</option>` + teams.map(t => `<option value="${t}">${t}</option>`).join("");
-
-  const seasons = Array.from(new Set(teamData.map(d => d.season))).sort((a,b) => a-b);
-  startSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonStart ? "selected" : ""}>${s}</option>`).join("");
-  endSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonEnd ? "selected" : ""}>${s}</option>`).join("");
-
-  backBtn.addEventListener("click", () => {
-    state.currentScene = Math.max(0, state.currentScene - 1);
-    updateScene();
-  });
-
-  nextBtn.addEventListener("click", () => {
-    state.currentScene = Math.min(scenes.length - 1, state.currentScene + 1);
-    updateScene();
-  });
-
-  teamSelect.addEventListener("change", () => {
-    state.selectedTeam = teamSelect.value;
-    if (state.currentScene === 3) updateScene();
-  });
-
-  startSeason.addEventListener("change", () => {
-    state.seasonStart = +startSeason.value;
-    if (state.seasonStart > state.seasonEnd) {
-      state.seasonEnd = state.seasonStart;
-      endSeason.value = state.seasonEnd;
-    }
-    if (state.currentScene === 3) updateScene();
-  });
-
-  endSeason.addEventListener("change", () => {
-    state.seasonEnd = +endSeason.value;
-    if (state.seasonEnd < state.seasonStart) {
-      state.seasonStart = state.seasonEnd;
-      startSeason.value = state.seasonStart;
-    }
-    if (state.currentScene === 3) updateScene();
-  });
-
-  resetExplore.addEventListener("click", () => {
-    state.selectedTeam = "ALL";
-    state.seasonStart = 2005;
-    state.seasonEnd = 2024;
-    teamSelect.value = "ALL";
-    startSeason.value = "2005";
-    endSeason.value = "2024";
-    if (state.currentScene === 3) updateScene();
-  });
-}
+    const teams = Array.from(new Set(teamData.map(d => d.team))).sort();
+  
+    teamSelect.innerHTML = teams.map(t => `<option value="${t}">${t}</option>`).join("");
+  
+    const seasons = Array.from(new Set(teamData.map(d => d.season))).sort((a,b) => a-b);
+    startSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonStart ? "selected" : ""}>${s}</option>`).join("");
+    endSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonEnd ? "selected" : ""}>${s}</option>`).join("");
+  
+    backBtn.addEventListener("click", () => {
+      state.currentScene = Math.max(0, state.currentScene - 1);
+      updateScene();
+    });
+  
+    nextBtn.addEventListener("click", () => {
+      state.currentScene = Math.min(scenes.length - 1, state.currentScene + 1);
+      updateScene();
+    });
+  
+    teamSelect.addEventListener("change", () => {
+      state.selectedTeams = Array.from(teamSelect.selectedOptions).map(o => o.value);
+      if (state.currentScene === 3) updateScene();
+    });
+  
+    document.getElementById("maxTeamsVisible").addEventListener("change", (e) => {
+      state.maxTeamsVisible = +e.target.value;
+      if (state.currentScene === 3) updateScene();
+    });
+  
+    startSeason.addEventListener("change", () => {
+      state.seasonStart = +startSeason.value;
+      if (state.seasonStart > state.seasonEnd) {
+        state.seasonEnd = state.seasonStart;
+        endSeason.value = state.seasonEnd;
+      }
+      if (state.currentScene === 3) updateScene();
+    });
+  
+    endSeason.addEventListener("change", () => {
+      state.seasonEnd = +endSeason.value;
+      if (state.seasonEnd < state.seasonStart) {
+        state.seasonStart = state.seasonEnd;
+        startSeason.value = state.seasonStart;
+      }
+      if (state.currentScene === 3) updateScene();
+    });
+  
+    resetExplore.addEventListener("click", () => {
+      state.selectedTeams = [];
+      state.seasonStart = 2005;
+      state.seasonEnd = 2024;
+      state.maxTeamsVisible = 8;
+  
+      Array.from(teamSelect.options).forEach(o => o.selected = false);
+      startSeason.value = "2005";
+      endSeason.value = "2024";
+      document.getElementById("maxTeamsVisible").value = "8";
+  
+      if (state.currentScene === 3) updateScene();
+    });
+  }
 
 function updateScene() {
   const s = scenes[state.currentScene];
@@ -327,54 +343,85 @@ function renderScene3() {
 }
 
 function renderScene4() {
-  const filtered = teamData.filter(d => d.season >= state.seasonStart && d.season <= state.seasonEnd)
-    .filter(d => state.selectedTeam === "ALL" ? true : d.team === state.selectedTeam);
-
-  const x = d3.scaleLinear()
-    .domain([state.seasonStart, state.seasonEnd])
-    .range([0, innerW]);
-
-  const y = d3.scaleLinear()
-    .domain([d3.min(filtered, d => d.goalsPerGame) - 0.2, d3.max(filtered, d => d.goalsPerGame) + 0.2])
-    .range([innerH, 0]);
-
-  drawAxes(x, y, "Season", "Goals per Game");
-
-  const nested = d3.groups(filtered, d => d.team);
-  const color = d3.scaleOrdinal(d3.schemeTableau10).domain(nested.map(d => d[0]));
-
-  nested.forEach(([team, values]) => {
-    values.sort((a,b) => a.season - b.season);
-
-    g.append("path")
-      .datum(values)
-      .attr("fill", "none")
-      .attr("stroke", color(team))
-      .attr("stroke-width", 2.5)
-      .attr("d", d3.line().x(d => x(d.season)).y(d => y(d.goalsPerGame)));
-
-    g.selectAll(`.dot-${team}`)
-      .data(values)
-      .enter()
-      .append("circle")
-      .attr("cx", d => x(d.season))
-      .attr("cy", d => y(d.goalsPerGame))
-      .attr("r", 3.6)
-      .attr("fill", color(team))
-      .on("mousemove", (event, d) => {
-        tooltip.classed("hidden", false)
-          .style("left", `${event.pageX + 12}px`)
-          .style("top", `${event.pageY - 28}px`)
-          .html(`<strong>${d.team}</strong><br/>Season: ${d.season}<br/>G/GP: ${d.goalsPerGame}`);
-      })
-      .on("mouseleave", () => tooltip.classed("hidden", true));
-  });
-
-  // Small legend
-  const legend = g.append("g").attr("transform", `translate(${innerW - 140}, 8)`);
-  nested.slice(0, 8).forEach(([team], i) => {
-    const row = legend.append("g").attr("transform", `translate(0,${i * 18})`);
-    row.append("rect").attr("width", 12).attr("height", 12).attr("fill", color(team));
-    row.append("text").attr("x", 18).attr("y", 10).attr("fill", "#dce5ff").attr("font-size", 12).text(team);
-  });
-}
+    const windowed = teamData.filter(d => d.season >= state.seasonStart && d.season <= state.seasonEnd);
+  
+    // Team ranking in selected window (for default top-N display)
+    const teamMeans = d3.rollups(
+      windowed,
+      v => d3.mean(v, d => d.goalsPerGame),
+      d => d.team
+    ).map(([team, avg]) => ({ team, avg }))
+     .sort((a,b) => b.avg - a.avg);
+  
+    let teamsToShow;
+    if (state.selectedTeams.length > 0) {
+      teamsToShow = state.selectedTeams;
+    } else {
+      teamsToShow = teamMeans.slice(0, state.maxTeamsVisible).map(d => d.team);
+    }
+  
+    const filtered = windowed.filter(d => teamsToShow.includes(d.team));
+  
+    const x = d3.scaleLinear()
+      .domain([state.seasonStart, state.seasonEnd])
+      .range([0, innerW]);
+  
+    const y = d3.scaleLinear()
+      .domain([
+        d3.min(filtered, d => d.goalsPerGame) - 0.2,
+        d3.max(filtered, d => d.goalsPerGame) + 0.2
+      ])
+      .range([innerH, 0]);
+  
+    drawAxes(x, y, "Season", "Goals per Game");
+  
+    const nested = d3.groups(filtered, d => d.team);
+    const color = d3.scaleOrdinal(d3.schemeTableau10).domain(nested.map(d => d[0]));
+  
+    nested.forEach(([team, values]) => {
+      values.sort((a,b) => a.season - b.season);
+  
+      g.append("path")
+        .datum(values)
+        .attr("fill", "none")
+        .attr("stroke", color(team))
+        .attr("stroke-width", 2.5)
+        .attr("d", d3.line().x(d => x(d.season)).y(d => y(d.goalsPerGame)));
+  
+      g.selectAll(`.dot-${team}`)
+        .data(values)
+        .enter()
+        .append("circle")
+        .attr("cx", d => x(d.season))
+        .attr("cy", d => y(d.goalsPerGame))
+        .attr("r", 3.4)
+        .attr("fill", color(team))
+        .on("mousemove", (event, d) => {
+          tooltip.classed("hidden", false)
+            .style("left", `${event.pageX + 12}px`)
+            .style("top", `${event.pageY - 28}px`)
+            .html(`<strong>${d.team}</strong><br/>Season: ${d.season}<br/>G/GP: ${d.goalsPerGame}`);
+        })
+        .on("mouseleave", () => tooltip.classed("hidden", true));
+    });
+  
+    // Guidance text in-chart for decluttering behavior
+    g.append("text")
+      .attr("x", 0)
+      .attr("y", -18)
+      .attr("fill", "#ffcc4d")
+      .attr("font-size", 12)
+      .text(
+        state.selectedTeams.length
+          ? `Showing selected teams (${state.selectedTeams.length})`
+          : `No teams selected: showing top ${state.maxTeamsVisible} by average goals/game`
+      );
+  
+    // Scrollable legend-style list (bounded count)
+    const legend = g.append("g").attr("transform", `translate(${innerW - 160}, 6)`);
+    nested.slice(0, 14).forEach(([team], i) => {
+      const row = legend.append("g").attr("transform", `translate(0,${i * 17})`);
+      row.append("rect").attr("width", 11).attr("height", 11).attr("fill", color(team));
+      row.append("text").attr("x", 16).attr("y", 10).attr("fill", "#dce5ff").attr("font-size", 11).text(team);
+    });
+  }

@@ -10,7 +10,7 @@
 <body>
   <header>
     <h1>NHL Scoring Story</h1>
-    <p id="subtitle">How league offense changed over time—and which teams shape the modern era.</p>
+    <p id="subtitle">How NHL scoring has shifted over the course of the modern era.</p>
   </header>
 
   <main>
@@ -22,8 +22,16 @@
       </div>
 
       <div id="exploreControls" class="hidden">
-        <label for="teamSelect">Team:</label>
-        <select id="teamSelect"></select>
+        <label for="teamSelect">Teams (Ctrl/Cmd+Click):</label>
+        <select id="teamSelect" multiple size="8"></select>
+
+        <label for="maxTeamsVisible">If none selected, show top:</label>
+        <select id="maxTeamsVisible">
+        <option value="6">Top 6</option>
+        <option value="8" selected>Top 8</option>
+        <option value="10">Top 10</option>
+        <option value="12">Top 12</option>
+        </select>
 
         <label for="startSeason">Start Season:</label>
         <select id="startSeason"></select>
@@ -52,7 +60,6 @@
       <a href="https://www.hockey-reference.com/leagues/NHL_stats.html" target="_blank" rel="noopener noreferrer">
         Hockey-Reference NHL League Statistics
       </a>
-      (season-level values, recreated in this story dataset).
     </p>
   </footer>
 
