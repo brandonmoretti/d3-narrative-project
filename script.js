@@ -97,78 +97,64 @@ d3.csv(DATA_URL).then(() => {
 });
 
 function initControls() {
-  // Team multiselect
-  const teams = Array.from(new Set(teamData.map(d => d.team))).sort();
-  teamSelect.innerHTML = teams.map(t => `<option value="${t}">${t}</option>`).join("");
-
-  // Ensure maxTeamsVisible has "All 32" option even if HTML missed it
-  if (![...maxTeamsVisibleSelect.options].some(o => o.value === "32")) {
-    const opt = document.createElement("option");
-    opt.value = "32";
-    opt.textContent = "All 32";
-    maxTeamsVisibleSelect.appendChild(opt);
+    const teams = Array.from(new Set(teamData.map(d => d.team))).sort();
+    teamSelect.innerHTML = teams.map(t => `<option value="${t}">${t}</option>`).join("");
+  
+    const seasons = Array.from(new Set(teamData.map(d => d.season))).sort((a,b) => a-b);
+    startSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonStart ? "selected" : ""}>${s}</option>`).join("");
+    endSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonEnd ? "selected" : ""}>${s}</option>`).join("");
+  
+    backBtn.addEventListener("click", () => {
+      state.currentScene = Math.max(0, state.currentScene - 1);
+      updateScene();
+    });
+  
+    nextBtn.addEventListener("click", () => {
+      state.currentScene = Math.min(scenes.length - 1, state.currentScene + 1);
+      updateScene();
+    });
+  
+    teamSelect.addEventListener("change", () => {
+      state.selectedTeams = Array.from(teamSelect.selectedOptions).map(o => o.value);
+      if (state.currentScene === 3) updateScene();
+    });
+  
+    // ADD THIS BLOCK HERE:
+    maxTeamsVisibleSelect.addEventListener("change", (e) => {
+      state.maxTeamsVisible = +e.target.value;
+      if (state.currentScene >= 1) updateScene(); // scenes 2,3,4
+    });
+  
+    startSeason.addEventListener("change", () => {
+      state.seasonStart = +startSeason.value;
+      if (state.seasonStart > state.seasonEnd) {
+        state.seasonEnd = state.seasonStart;
+        endSeason.value = String(state.seasonEnd);
+      }
+      if (state.currentScene === 3) updateScene();
+    });
+  
+    endSeason.addEventListener("change", () => {
+      state.seasonEnd = +endSeason.value;
+      if (state.seasonEnd < state.seasonStart) {
+        state.seasonStart = state.seasonEnd;
+        startSeason.value = String(state.seasonStart);
+      }
+      if (state.currentScene === 3) updateScene();
+    });
+  
+    resetExplore.addEventListener("click", () => {
+      state.selectedTeams = [];
+      state.seasonStart = 2005;
+      state.seasonEnd = 2024;
+      state.maxTeamsVisible = 8;
+      Array.from(teamSelect.options).forEach(o => { o.selected = false; });
+      startSeason.value = "2005";
+      endSeason.value = "2024";
+      maxTeamsVisibleSelect.value = "8";
+      if (state.currentScene === 3) updateScene();
+    });
   }
-
-  // Seasons
-  const seasons = Array.from(new Set(teamData.map(d => d.season))).sort((a,b) => a-b);
-  startSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonStart ? "selected" : ""}>${s}</option>`).join("");
-  endSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonEnd ? "selected" : ""}>${s}</option>`).join("");
-
-  // Keep dropdown synced with state
-  maxTeamsVisibleSelect.value = String(state.maxTeamsVisible);
-
-  backBtn.addEventListener("click", () => {
-    state.currentScene = Math.max(0, state.currentScene - 1);
-    updateScene();
-  });
-
-  nextBtn.addEventListener("click", () => {
-    state.currentScene = Math.min(scenes.length - 1, state.currentScene + 1);
-    updateScene();
-  });
-
-  teamSelect.addEventListener("change", () => {
-    state.selectedTeams = Array.from(teamSelect.selectedOptions).map(o => o.value);
-    if (state.currentScene === 3) updateScene();
-  });
-
-  maxTeamsVisibleSelect.addEventListener("change", (e) => {
-    state.maxTeamsVisible = +e.target.value;
-    if (state.currentScene === 3) updateScene();
-  });
-
-  startSeason.addEventListener("change", () => {
-    state.seasonStart = +startSeason.value;
-    if (state.seasonStart > state.seasonEnd) {
-      state.seasonEnd = state.seasonStart;
-      endSeason.value = String(state.seasonEnd);
-    }
-    if (state.currentScene === 3) updateScene();
-  });
-
-  endSeason.addEventListener("change", () => {
-    state.seasonEnd = +endSeason.value;
-    if (state.seasonEnd < state.seasonStart) {
-      state.seasonStart = state.seasonEnd;
-      startSeason.value = String(state.seasonStart);
-    }
-    if (state.currentScene === 3) updateScene();
-  });
-
-  resetExplore.addEventListener("click", () => {
-    state.selectedTeams = [];
-    state.seasonStart = 2005;
-    state.seasonEnd = 2024;
-    state.maxTeamsVisible = 8;
-
-    Array.from(teamSelect.options).forEach(o => { o.selected = false; });
-    startSeason.value = "2005";
-    endSeason.value = "2024";
-    maxTeamsVisibleSelect.value = "8";
-
-    if (state.currentScene === 3) updateScene();
-  });
-}
 
 function updateScene() {
   const s = scenes[state.currentScene];
@@ -266,108 +252,112 @@ function renderScene1() {
 }
 
 function renderScene2() {
-  const recent = teamData.filter(d => d.season >= 2018 && d.season <= 2024);
-  const avgByTeam = d3.rollups(recent, v => d3.mean(v, d => d.goalsPerGame), d => d.team)
-    .map(([team, avg]) => ({ team, avg }))
-    .sort((a,b) => b.avg - a.avg);
-
-  // Guided scene readability: top 16
-  const top = avgByTeam.slice(0, 16);
-
-  const x = d3.scaleBand().domain(top.map(d => d.team)).range([0, innerW]).padding(0.15);
-  const y = d3.scaleLinear().domain([0, d3.max(top, d => d.avg) + 0.4]).range([innerH, 0]);
-
-  drawAxes(
-    d3.scaleLinear().domain([0, top.length - 1]).range([0, innerW]),
-    y,
-    "Top 16 teams (ordered by scoring)",
-    "Avg Goals per Game (2018–2024)"
-  );
-
-  g.selectAll(".bar")
-    .data(top)
-    .enter()
-    .append("rect")
-    .attr("x", d => x(d.team))
-    .attr("y", d => y(d.avg))
-    .attr("width", x.bandwidth())
-    .attr("height", d => innerH - y(d.avg))
-    .attr("fill", "#7fd1b9");
-
-  g.selectAll(".team-label")
-    .data(top)
-    .enter()
-    .append("text")
-    .attr("x", d => x(d.team) + x.bandwidth() / 2)
-    .attr("y", innerH + 16)
-    .attr("text-anchor", "middle")
-    .attr("fill", "#dce5ff")
-    .attr("font-size", 11)
-    .text(d => d.team);
-
-  const best = top[0];
-  const mid = top[Math.floor(top.length / 2)];
-  addAnnotation(x(best.team) + x.bandwidth()/2, y(best.avg), "Top modern offense|Leads recent scoring");
-  addAnnotation(x(mid.team) + x.bandwidth()/2, y(mid.avg), "Middle of top tier|Strong but not leading", -220, -20);
+    const recent = teamData.filter(d => d.season >= 2018 && d.season <= 2024);
+    const avgByTeam = d3.rollups(recent, v => d3.mean(v, d => d.goalsPerGame), d => d.team)
+      .map(([team, avg]) => ({ team, avg }))
+      .sort((a,b) => b.avg - a.avg);
+  
+    const shown = avgByTeam.slice(0, state.maxTeamsVisible);
+  
+    const x = d3.scaleBand().domain(shown.map(d => d.team)).range([0, innerW]).padding(0.15);
+    const y = d3.scaleLinear().domain([0, d3.max(shown, d => d.avg) + 0.4]).range([innerH, 0]);
+  
+    drawAxes(
+      d3.scaleLinear().domain([0, shown.length - 1]).range([0, innerW]),
+      y,
+      `${state.maxTeamsVisible === 32 ? "All 32 teams" : `Top ${state.maxTeamsVisible} teams`} (ordered by scoring)`,
+      "Avg Goals per Game (2018–2024)"
+    );
+  
+    g.selectAll(".bar")
+      .data(shown)
+      .enter()
+      .append("rect")
+      .attr("x", d => x(d.team))
+      .attr("y", d => y(d.avg))
+      .attr("width", x.bandwidth())
+      .attr("height", d => innerH - y(d.avg))
+      .attr("fill", "#7fd1b9");
+  
+    g.selectAll(".team-label")
+      .data(shown)
+      .enter()
+      .append("text")
+      .attr("x", d => x(d.team) + x.bandwidth() / 2)
+      .attr("y", innerH + 16)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#dce5ff")
+      .attr("font-size", 11)
+      .text(d => d.team);
+  
+    const top = shown[0];
+    const mid = shown[Math.floor(shown.length / 2)];
+    addAnnotation(x(top.team) + x.bandwidth()/2, y(top.avg), "Top modern offense|Leads recent scoring");
+    addAnnotation(x(mid.team) + x.bandwidth()/2, y(mid.avg), "Middle tier|Competitive but less explosive", -220, -20);
 }
 
 function renderScene3() {
-  const early = teamData.filter(d => d.season >= 1995 && d.season <= 2004);
-  const modern = teamData.filter(d => d.season >= 2015 && d.season <= 2024);
-
-  const eMap = new Map(d3.rollups(early, v => d3.mean(v, d => d.goalsPerGame), d => d.team));
-  const mMap = new Map(d3.rollups(modern, v => d3.mean(v, d => d.goalsPerGame), d => d.team));
-
-  const delta = Array.from(mMap.keys()).map(team => ({
-    team,
-    diff: +(mMap.get(team) - (eMap.get(team) || 0)).toFixed(2)
-  })).sort((a,b) => b.diff - a.diff);
-
-  // Guided readability: top 8 and bottom 8
-  const shown = [...delta.slice(0, 8), ...delta.slice(-8)];
-
-  const x = d3.scaleBand().domain(shown.map(d => d.team)).range([0, innerW]).padding(0.2);
-  const y = d3.scaleLinear()
-    .domain([d3.min(shown, d => d.diff) - 0.2, d3.max(shown, d => d.diff) + 0.2])
-    .range([innerH, 0]);
-
-  drawAxes(
-    d3.scaleLinear().domain([0, shown.length - 1]).range([0, innerW]),
-    y,
-    "Largest and smallest team changes",
-    "Change in Goals/Game (Modern - Early Era)"
-  );
-
-  g.append("line")
-    .attr("x1", 0).attr("x2", innerW)
-    .attr("y1", y(0)).attr("y2", y(0))
-    .attr("stroke", "#c9d5ff")
-    .attr("stroke-dasharray", "4 4");
-
-  g.selectAll(".deltaBar")
-    .data(shown)
-    .enter()
-    .append("rect")
-    .attr("x", d => x(d.team))
-    .attr("y", d => d.diff >= 0 ? y(d.diff) : y(0))
-    .attr("width", x.bandwidth())
-    .attr("height", d => Math.abs(y(d.diff) - y(0)))
-    .attr("fill", d => d.diff >= 0 ? "#4ea3ff" : "#ff6b6b");
-
-  g.selectAll(".team-label")
-    .data(shown)
-    .enter()
-    .append("text")
-    .attr("x", d => x(d.team) + x.bandwidth()/2)
-    .attr("y", innerH + 16)
-    .attr("text-anchor", "middle")
-    .attr("fill", "#dce5ff")
-    .attr("font-size", 11)
-    .text(d => d.team);
-
-  addAnnotation(x(shown[0].team) + x.bandwidth()/2, y(shown[0].diff), "Largest jump|Biggest era-to-era increase");
-  addAnnotation(x(shown[shown.length-1].team) + x.bandwidth()/2, y(shown[shown.length-1].diff), "Smallest jump|Less change than peers", -240, 40);
-}
+    const early = teamData.filter(d => d.season >= 1995 && d.season <= 2004);
+    const modern = teamData.filter(d => d.season >= 2015 && d.season <= 2024);
+  
+    const eMap = new Map(d3.rollups(early, v => d3.mean(v, d => d.goalsPerGame), d => d.team));
+    const mMap = new Map(d3.rollups(modern, v => d3.mean(v, d => d.goalsPerGame), d => d.team));
+  
+    const delta = Array.from(mMap.keys()).map(team => ({
+      team,
+      diff: +(mMap.get(team) - (eMap.get(team) || 0)).toFixed(2)
+    })).sort((a,b) => b.diff - a.diff);
+  
+    let shown;
+    if (state.maxTeamsVisible === 32) {
+      shown = delta;
+    } else {
+      const half = Math.floor(state.maxTeamsVisible / 2);
+      shown = [...delta.slice(0, half), ...delta.slice(-half)];
+    }
+  
+    const x = d3.scaleBand().domain(shown.map(d => d.team)).range([0, innerW]).padding(0.2);
+    const y = d3.scaleLinear()
+      .domain([d3.min(shown, d => d.diff) - 0.2, d3.max(shown, d => d.diff) + 0.2])
+      .range([innerH, 0]);
+  
+    drawAxes(
+      d3.scaleLinear().domain([0, shown.length - 1]).range([0, innerW]),
+      y,
+      state.maxTeamsVisible === 32 ? "All teams by era change" : `Top/Bottom ${state.maxTeamsVisible / 2} teams by era change`,
+      "Change in Goals/Game (Modern - Early Era)"
+    );
+  
+    g.append("line")
+      .attr("x1", 0).attr("x2", innerW)
+      .attr("y1", y(0)).attr("y2", y(0))
+      .attr("stroke", "#c9d5ff")
+      .attr("stroke-dasharray", "4 4");
+  
+    g.selectAll(".deltaBar")
+      .data(shown)
+      .enter()
+      .append("rect")
+      .attr("x", d => x(d.team))
+      .attr("y", d => d.diff >= 0 ? y(d.diff) : y(0))
+      .attr("width", x.bandwidth())
+      .attr("height", d => Math.abs(y(d.diff) - y(0)))
+      .attr("fill", d => d.diff >= 0 ? "#4ea3ff" : "#ff6b6b");
+  
+    g.selectAll(".team-label")
+      .data(shown)
+      .enter()
+      .append("text")
+      .attr("x", d => x(d.team) + x.bandwidth()/2)
+      .attr("y", innerH + 16)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#dce5ff")
+      .attr("font-size", 11)
+      .text(d => d.team);
+  
+    addAnnotation(x(shown[0].team) + x.bandwidth()/2, y(shown[0].diff), "Largest jump|Biggest era-to-era increase");
+    addAnnotation(x(shown[shown.length-1].team) + x.bandwidth()/2, y(shown[shown.length-1].diff), "Smallest jump|Less change than peers", -240, 40);
+  }
 
 function renderScene4() {
   const windowed = teamData.filter(d => d.season >= state.seasonStart && d.season <= state.seasonEnd);
