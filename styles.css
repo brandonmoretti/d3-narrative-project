@@ -1,0 +1,126 @@
+:root {
+    --bg: #0b1020;
+    --card: #131a2e;
+    --text: #f2f5ff;
+    --muted: #b8c3e0;
+    --accent: #4ea3ff;
+    --accent2: #ffcc4d;
+    --danger: #ff6b6b;
+    --grid: #2a3557;
+  }
+  
+  * {
+    box-sizing: border-box;
+  }
+  
+  body {
+    margin: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.4;
+  }
+  
+  header, main, footer {
+    max-width: 1050px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+  
+  header h1 {
+    margin-bottom: 6px;
+  }
+  
+  #subtitle {
+    margin-top: 0;
+    color: var(--muted);
+  }
+  
+  #controls, #sceneText, #chartWrap {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  
+  .scene-nav {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  
+  button, select {
+    background: #1d2743;
+    color: var(--text);
+    border: 1px solid #33416e;
+    border-radius: 8px;
+    padding: 8px 12px;
+  }
+  
+  button:hover, select:hover {
+    border-color: var(--accent);
+  }
+  
+  button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  
+  #sceneLabel {
+    font-weight: bold;
+    color: var(--accent2);
+  }
+  
+  #exploreControls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  
+  .hidden {
+    display: none !important;
+  }
+  
+  .axis path, .axis line {
+    stroke: #8ea0d1;
+  }
+  
+  .grid line {
+    stroke: var(--grid);
+    stroke-dasharray: 2 4;
+  }
+  
+  .annotation-box {
+    fill: rgba(78, 163, 255, 0.12);
+    stroke: var(--accent);
+    stroke-width: 1.5;
+    rx: 6;
+  }
+  
+  .annotation-text {
+    fill: var(--text);
+    font-size: 13px;
+  }
+  
+  .annotation-line {
+    stroke: var(--accent2);
+    stroke-width: 2;
+  }
+  
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: #121a32;
+    border: 1px solid #3f5699;
+    color: #fff;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+  }
+  
+  footer {
+    color: var(--muted);
+    font-size: 14px;
+  }

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NHL Scoring Story: A D3 Narrative Visualization</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>NHL Scoring Story</h1>
+    <p id="subtitle">How league offense changed over time—and which teams shape the modern era.</p>
+  </header>
+
+  <main>
+    <section id="controls">
+      <div class="scene-nav">
+        <button id="backBtn">◀ Back</button>
+        <span id="sceneLabel">Scene 1 of 4</span>
+        <button id="nextBtn">Next ▶</button>
+      </div>
+
+      <div id="exploreControls" class="hidden">
+        <label for="teamSelect">Team:</label>
+        <select id="teamSelect"></select>
+
+        <label for="startSeason">Start Season:</label>
+        <select id="startSeason"></select>
+
+        <label for="endSeason">End Season:</label>
+        <select id="endSeason"></select>
+
+        <button id="resetExplore">Reset</button>
+      </div>
+    </section>
+
+    <section id="sceneText">
+      <h2 id="sceneTitle"></h2>
+      <p id="sceneDescription"></p>
+    </section>
+
+    <section id="chartWrap">
+      <svg id="chart" width="960" height="540" role="img" aria-label="Narrative visualization chart"></svg>
+      <div id="tooltip" class="tooltip hidden"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      Data source:
+      <a href="https://www.hockey-reference.com/leagues/NHL_stats.html" target="_blank" rel="noopener noreferrer">
+        Hockey-Reference NHL League Statistics
+      </a>
+      (season-level values, recreated in this story dataset).
+    </p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
