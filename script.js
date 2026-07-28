@@ -24,10 +24,11 @@ const resetExplore = document.getElementById("resetExplore");
 
 const state = {
   currentScene: 0,
-  selectedTeams: [], // used in scene 4
+  selectedTeams: [],
   seasonStart: 2005,
   seasonEnd: 2024,
-  maxTeamsVisible: 8
+  maxTeamsVisible: 8,      // 8 | 16 | 32
+  scene4Mode: "8"          // "8" | "16" | "32" | "specific"
 };
 
 const scenes = [
@@ -48,7 +49,7 @@ const scenes = [
   },
   {
     title: "Scene 4: Explore the Data Yourself",
-    desc: "Select teams and season range to explore trends. If no teams are selected, the chart shows Top N from the Show control.",
+    desc: "Choose a mode: Top 8/16/32 or Specific Teams. Team selection only appears in Specific Teams mode.",
     render: renderScene4
   }
 ];
@@ -102,7 +103,7 @@ function initControls() {
   startSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonStart ? "selected" : ""}>${s}</option>`).join("");
   endSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonEnd ? "selected" : ""}>${s}</option>`).join("");
 
-  maxTeamsVisibleSelect.value = String(state.maxTeamsVisible);
+  maxTeamsVisibleSelect.value = "8";
 
   backBtn.addEventListener("click", () => {
     state.currentScene = Math.max(0, state.currentScene - 1);
@@ -115,13 +116,35 @@ function initControls() {
   });
 
   maxTeamsVisibleSelect.addEventListener("change", (e) => {
-    state.maxTeamsVisible = +e.target.value;
-    if (state.currentScene >= 1) updateScene(); // scenes 2,3,4
+    const val = e.target.value;
+
+    if (state.currentScene === 3) {
+      // Scene 4 mode supports specific teams
+      state.scene4Mode = val;
+      if (val === "specific") {
+        teamControlsWrap.style.display = "inline-flex";
+      } else {
+        teamControlsWrap.style.display = "none";
+        state.maxTeamsVisible = +val;
+        state.selectedTeams = [];
+        Array.from(teamSelect.options).forEach(o => { o.selected = false; });
+      }
+      updateScene();
+      return;
+    }
+
+    // Scenes 2/3: only numeric values matter
+    const safeVal = (val === "specific") ? "8" : val;
+    state.maxTeamsVisible = +safeVal;
+    if (val === "specific") {
+      maxTeamsVisibleSelect.value = "8";
+    }
+    if (state.currentScene >= 1) updateScene();
   });
 
   teamSelect.addEventListener("change", () => {
     state.selectedTeams = Array.from(teamSelect.selectedOptions).map(o => o.value);
-    if (state.currentScene === 3) updateScene(); // scene 4
+    if (state.currentScene === 3 && state.scene4Mode === "specific") updateScene();
   });
 
   startSeason.addEventListener("change", () => {
@@ -147,11 +170,13 @@ function initControls() {
     state.seasonStart = 2005;
     state.seasonEnd = 2024;
     state.maxTeamsVisible = 8;
+    state.scene4Mode = "8";
 
-    Array.from(teamSelect.options).forEach(o => o.selected = false);
+    Array.from(teamSelect.options).forEach(o => { o.selected = false; });
     startSeason.value = "2005";
     endSeason.value = "2024";
     maxTeamsVisibleSelect.value = "8";
+    teamControlsWrap.style.display = "none";
 
     if (state.currentScene >= 1) updateScene();
   });
@@ -166,17 +191,24 @@ function updateScene() {
   backBtn.disabled = state.currentScene === 0;
   nextBtn.disabled = state.currentScene === scenes.length - 1;
 
-  // show controls for scenes 2/3/4 (not scene 1)
+  // controls visible for scenes 2/3/4
   exploreControls.classList.toggle("hidden", state.currentScene === 0);
 
-  // only show team multiselect in scene 4
-  teamControlsWrap.style.display = state.currentScene === 3 ? "inline-flex" : "none";
+  if (state.currentScene === 3) {
+    // Scene 4: allow Specific Teams mode
+    maxTeamsVisibleSelect.value = state.scene4Mode;
+    teamControlsWrap.style.display = state.scene4Mode === "specific" ? "inline-flex" : "none";
+  } else {
+    // Scenes 2/3: hide team selector and restrict dropdown to numeric modes
+    teamControlsWrap.style.display = "none";
+    if (maxTeamsVisibleSelect.value === "specific") maxTeamsVisibleSelect.value = String(state.maxTeamsVisible);
+  }
 
   g.selectAll("*").remove();
   s.render();
 }
 
-/* ---------- axis helpers ---------- */
+/* ---------- Axis helpers ---------- */
 
 function drawValueAxes({ xScale, yScale, xLabel, yLabel, xTicks = 8, yTicks = 6 }) {
   g.append("g")
@@ -255,10 +287,10 @@ function drawCategoryAxes({ xScale, yScale, xLabel, yLabel, rotateLabels = false
     .text(yLabel);
 }
 
-/* ---------- annotation helper ---------- */
-// Cleaner callout: line ends at edge of box
+/* ---------- Annotation helper ---------- */
+
 function addAnnotation({ x, y, title, subtitle, boxX, boxY, boxW = 260, boxH = 56 }) {
-  const anchorX = boxX + (x < boxX ? 0 : boxW);
+  const anchorX = x < boxX ? boxX : boxX + boxW;
   const anchorY = boxY + boxH / 2;
 
   g.append("line")
@@ -297,12 +329,13 @@ function addAnnotation({ x, y, title, subtitle, boxX, boxY, boxW = 260, boxH = 5
     .text(subtitle);
 }
 
-/* ---------- scene renders ---------- */
+/* ---------- Scene renders ---------- */
 
 function renderScene1() {
   const x = d3.scaleLinear().domain(d3.extent(leagueData, d => d.season)).range([0, innerW]);
   const y = d3.scaleLinear()
     .domain([d3.min(leagueData, d => d.goalsPerGame) - 0.3, d3.max(leagueData, d => d.goalsPerGame) + 0.3])
+    .nice()
     .range([innerH, 0]);
 
   drawValueAxes({
@@ -381,7 +414,7 @@ function renderScene2() {
     title: "Top modern offense",
     subtitle: "Leads recent scoring",
     boxX: Math.min(innerW - 280, x(top.team) + 80),
-    boxY: Math.max(5, y(top.avg) - 110)
+    boxY: Math.max(8, y(top.avg) - 110)
   });
 
   addAnnotation({
@@ -389,8 +422,8 @@ function renderScene2() {
     y: y(mid.avg),
     title: "Middle tier",
     subtitle: "Competitive but less explosive",
-    boxX: Math.max(10, x(mid.team) - 160),
-    boxY: Math.max(10, y(mid.avg) - 80)
+    boxX: Math.max(8, x(mid.team) - 160),
+    boxY: Math.max(8, y(mid.avg) - 80)
   });
 }
 
@@ -415,8 +448,6 @@ function renderScene3() {
   }
 
   const x = d3.scaleBand().domain(shown.map(d => d.team)).range([0, innerW]).padding(0.12);
-
-  // IMPORTANT FIX: include 0 and use a centered baseline
   const yMin = Math.min(0, d3.min(shown, d => d.diff) - 0.05);
   const yMax = Math.max(0, d3.max(shown, d => d.diff) + 0.05);
   const y = d3.scaleLinear().domain([yMin, yMax]).nice().range([innerH, 0]);
@@ -431,7 +462,6 @@ function renderScene3() {
     rotateLabels: shown.length > 16
   });
 
-  // zero line
   g.append("line")
     .attr("x1", 0)
     .attr("x2", innerW)
@@ -468,7 +498,7 @@ function renderScene3() {
     y: y(low.diff),
     title: "Smallest jump",
     subtitle: "Least positive / most negative shift",
-    boxX: Math.max(10, x(low.team) - 220),
+    boxX: Math.max(8, x(low.team) - 220),
     boxY: Math.max(8, y(low.diff) - 40)
   });
 }
@@ -481,10 +511,22 @@ function renderScene4() {
     .sort((a,b) => b.avg - a.avg);
 
   let teamsToShow;
-  if (state.selectedTeams.length > 0) {
+
+  if (state.scene4Mode === "specific") {
     teamsToShow = state.selectedTeams;
+    if (teamsToShow.length === 0) {
+      g.append("text")
+        .attr("x", innerW / 2)
+        .attr("y", innerH / 2)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#ffcc4d")
+        .style("font-size", "16px")
+        .text("Choose one or more teams in “Specific Teams” mode.");
+      return;
+    }
   } else {
-    teamsToShow = teamMeans.slice(0, state.maxTeamsVisible).map(d => d.team);
+    const n = +state.scene4Mode;
+    teamsToShow = teamMeans.slice(0, n).map(d => d.team);
   }
 
   const filtered = windowed.filter(d => teamsToShow.includes(d.team));
@@ -546,9 +588,9 @@ function renderScene4() {
     .attr("fill", "#ffcc4d")
     .attr("font-size", 12)
     .text(
-      state.selectedTeams.length
-        ? `Showing selected teams (${state.selectedTeams.length})`
-        : `No teams selected: showing top ${state.maxTeamsVisible} by average goals/game`
+      state.scene4Mode === "specific"
+        ? `Specific Teams mode: ${state.selectedTeams.length} selected`
+        : `Showing ${state.scene4Mode === "32" ? "All 32 teams" : `Top ${state.scene4Mode} teams`} by average goals/game`
     );
 
   const legend = g.append("g").attr("transform", `translate(${innerW - 160}, 6)`);

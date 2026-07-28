@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NHL Scoring Story: A D3 Narrative Visualization</title>
-  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="styles.css?v=6" />
   <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body>
@@ -27,9 +27,10 @@
           <option value="8" selected>Top 8</option>
           <option value="16">Top 16</option>
           <option value="32">All 32</option>
+          <option value="specific">Specific Teams</option>
         </select>
 
-        <span id="teamControlsWrap">
+        <span id="teamControlsWrap" style="display:none;">
           <label for="teamSelect">Teams (Ctrl/Cmd+Click):</label>
           <select id="teamSelect" multiple size="8"></select>
         </span>
@@ -64,6 +65,6 @@
     </p>
   </footer>
 
-  <script src="script.js?v=5"></script>
+  <script src="script.js?v=6"></script>
 </body>
 </html>
