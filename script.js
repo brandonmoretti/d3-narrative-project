@@ -42,17 +42,17 @@ const state = {
 const scenes = [
   {
     title: "Scene 1: NHL Scoring Trend Since 1990",
-    desc: "League scoring dipped through the late 1990s and early 2000s, then climbed in the modern era.",
+    desc: "League scoring was incredibly high in the 1980s as skater skill grew unproportionally to goalies, thank Wayne Gretzky and company. However, goaltending entered a new era due to the likes of Patrick Roy and Martin Brodeur, as well as higher physicality defenders like Scott Stevens, and scoring plummented until the mid 2000s. A trend of stars like Crosby, Ovechkin, and Kane recovered offensive numbers to the present day.",
     render: renderScene1
   },
   {
     title: "Scene 2: Team Averages in Recent Seasons",
-    desc: "Compare team scoring in recent years. Use Top 8 / Top 16 / All 32 to adjust chart density.",
+    desc: "Tampa has had the most fiery offense since 2018, and have won 2 cups, appearing in 3 total finals in the timespan, due to offensive juggernauts like Kucherov and Stamkos. Every other team in the top 8 has won a cup or made a deep playoff run in the timespan. No team outside of the top 9 has won a cup between 2018-2024.",
     render: renderScene2
   },
   {
     title: "Scene 3: Before vs. After Era Shift",
-    desc: "Each bar shows how much a team’s modern-era scoring differs from the pre-lockout era.",
+    desc: "Each bar shows how much a team’s modern-era scoring differs from the pre-lockout era. Detroit sits with the worst differential, who were arguably the most dominant franchise between 1990-2004.",
     render: renderScene3
   },
   {
@@ -667,4 +667,36 @@ function renderScene4() {
         ? `Specific Teams mode: ${state.selectedTeams.length} selected`
         : `Showing Top ${state.scene4Mode} teams by average goals/game`
     );
+
+  // Legend / key restored
+  const legendItems = nested.map(([team]) => team);
+  const legendX = innerW - 165;
+  const legendY = 8;
+  const rowH = 17;
+  const maxRows = Math.min(14, legendItems.length);
+
+  g.append("rect")
+    .attr("x", legendX - 10)
+    .attr("y", legendY - 8)
+    .attr("width", 160)
+    .attr("height", maxRows * rowH + 18)
+    .attr("fill", "rgba(19,26,46,0.75)")
+    .attr("stroke", "#33416e")
+    .attr("rx", 8);
+
+  const legend = g.append("g").attr("transform", `translate(${legendX}, ${legendY})`);
+
+  legendItems.slice(0, maxRows).forEach((team, i) => {
+    const row = legend.append("g").attr("transform", `translate(0, ${i * rowH})`);
+    row.append("rect")
+      .attr("width", 11)
+      .attr("height", 11)
+      .attr("fill", color(team));
+    row.append("text")
+      .attr("x", 16)
+      .attr("y", 10)
+      .attr("fill", "#dce5ff")
+      .attr("font-size", 11)
+      .text(team);
+  });
 }
