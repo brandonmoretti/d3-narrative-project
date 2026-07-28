@@ -32,8 +32,8 @@ const resetExplore = document.getElementById("resetExplore");
 
 const state = {
   currentScene: 0,
-  maxTeamsVisible: 8,
-  scene4Mode: "8",
+  maxTeamsVisible: 8, // scenes 2/3
+  scene4Mode: "8",    // scene4: "8" | "16" | "specific"
   selectedTeams: [],
   seasonStart: 2005,
   seasonEnd: 2024
@@ -63,49 +63,6 @@ const scenes = [
 ];
 
 const CSV_FILE = "nhl_gfg_pivot_1990_2024.csv";
-
-// Build likely paths for local + GitHub Pages
-function candidateCsvPaths(filename) {
-  const path = window.location.pathname; // e.g. /d3-narrative-project/
-  const segs = path.split("/").filter(Boolean);
-  const repo = segs.length ? segs[0] : "";
-
-  const candidates = [
-    `./${filename}`,
-    filename,
-    `/${filename}`
-  ];
-
-  if (repo) {
-    candidates.push(`/${repo}/${filename}`);
-  }
-
-  // Absolute raw github as fallback (works after push)
-  candidates.push(`https://raw.githubusercontent.com/brandonmoretti/d3-narrative-project/main/${filename}`);
-
-  // de-dupe
-  return [...new Set(candidates)];
-}
-
-async function loadCsvWithFallback(filename) {
-  const paths = candidateCsvPaths(filename);
-  let lastErr = null;
-
-  for (const p of paths) {
-    try {
-      const data = await d3.csv(p);
-      if (Array.isArray(data) && data.length > 0) {
-        console.log("Loaded CSV from:", p);
-        return data;
-      }
-      lastErr = new Error(`Empty CSV at ${p}`);
-    } catch (e) {
-      lastErr = e;
-      console.warn("CSV load failed:", p, e?.message || e);
-    }
-  }
-  throw lastErr || new Error("Unable to load CSV from any candidate path.");
-}
 
 const CANONICAL_TEAMS = [
   "ANA","ARI","BOS","BUF","CAR","CBJ","CGY","CHI","COL","DAL","DET","EDM",
@@ -142,7 +99,7 @@ const TEAM_COLUMN_MAP = {
   STL: ["St. Louis Blues", "St. Louis Blues*"],
   TBL: ["Tampa Bay Lightning", "Tampa Bay Lightning*"],
   TOR: ["Toronto Maple Leafs", "Toronto Maple Leafs*"],
-  UTA: ["Utah Hockey Club", "Utah Hockey Club*"], // if present in newer data
+  UTA: ["Utah Hockey Club", "Utah Hockey Club*"],
   VAN: ["Vancouver Canucks", "Vancouver Canucks*"],
   VGK: ["Vegas Golden Knights", "Vegas Golden Knights*"],
   WPG: ["Winnipeg Jets", "Winnipeg Jets*", "Atlanta Thrashers", "Atlanta Thrashers*"],
@@ -152,30 +109,44 @@ const TEAM_COLUMN_MAP = {
 let leagueData = [];
 let teamData = [];
 
-loadCsvWithFallback(CSV_FILE).then(raw => {
-  const parsed = buildCanonicalTeamSeasonData(raw);
+/* -------------------- data loading -------------------- */
 
-  teamData = parsed.teamData;
-  leagueData = parsed.leagueData;
+function candidateCsvPaths(filename) {
+  const path = window.location.pathname;
+  const segs = path.split("/").filter(Boolean);
+  const repo = segs.length ? segs[0] : "";
 
-  // If UTA has no rows in this dataset, backfill UTA from ARI for 2024+ if desired
-  // (optional; not required for charting)
-  if (!teamData.some(d => d.team === "UTA")) {
-    const ariLatest = teamData.filter(d => d.team === "ARI" && d.season >= 2024);
-    ariLatest.forEach(d => teamData.push({ ...d, team: "UTA" }));
+  const candidates = [
+    `./${filename}`,
+    filename,
+    `/${filename}`
+  ];
+
+  if (repo) candidates.push(`/${repo}/${filename}`);
+  candidates.push(`https://raw.githubusercontent.com/brandonmoretti/d3-narrative-project/main/${filename}`);
+
+  return [...new Set(candidates)];
+}
+
+async function loadCsvWithFallback(filename) {
+  const tries = candidateCsvPaths(filename);
+  let lastErr = null;
+
+  for (const p of tries) {
+    try {
+      const data = await d3.csv(p);
+      if (Array.isArray(data) && data.length > 0) {
+        console.log("Loaded CSV from:", p);
+        return data;
+      }
+      lastErr = new Error(`Empty CSV: ${p}`);
+    } catch (e) {
+      lastErr = e;
+      console.warn("Failed:", p, e?.message || e);
+    }
   }
-
-  initControls();
-  updateScene();
-}).catch(err => {
-  sceneTitle.textContent = "Data Load Error";
-  sceneDescription.innerHTML = `
-    Could not load <strong>${CSV_FILE}</strong>.<br/>
-    Tried multiple paths. Open DevTools Console to see attempted URLs.<br/>
-    Also verify filename case exactly matches.
-  `;
-  console.error(err);
-});
+  throw lastErr || new Error("All CSV path attempts failed.");
+}
 
 function firstNumber(...vals) {
   for (const v of vals) {
@@ -194,22 +165,19 @@ function buildCanonicalTeamSeasonData(rows) {
     if (Number.isNaN(season)) return;
 
     CANONICAL_TEAMS.forEach(team => {
-      const cols = TEAM_COLUMN_MAP[team] || [];
-      const n = firstNumber(...cols.map(c => r[c]));
-      if (n !== null) {
-        outTeam.push({ season, team, goalsPerGame: +n });
+      let cols = TEAM_COLUMN_MAP[team] || [];
+
+      // UTA fallback to ARI/PHX if no Utah columns
+      if (team === "UTA" && (!r["Utah Hockey Club"] && !r["Utah Hockey Club*"])) {
+        cols = ["Arizona Coyotes", "Arizona Coyotes*", "Phoenix Coyotes", "Phoenix Coyotes*"];
+      }
+
+      const val = firstNumber(...cols.map(c => r[c]));
+      if (val !== null) {
+        outTeam.push({ season, team, goalsPerGame: +val });
       }
     });
   });
-
-  // manual merge for UTA from ARI/PHX if UTA column absent
-  const hasUTA = outTeam.some(d => d.team === "UTA");
-  if (!hasUTA) {
-    const ariRows = outTeam.filter(d => d.team === "ARI");
-    ariRows.forEach(d => {
-      if (d.season >= 2024) outTeam.push({ season: d.season, team: "UTA", goalsPerGame: d.goalsPerGame });
-    });
-  }
 
   const league = d3.rollups(
     outTeam,
@@ -221,6 +189,25 @@ function buildCanonicalTeamSeasonData(rows) {
 
   return { teamData: outTeam, leagueData: league };
 }
+
+loadCsvWithFallback(CSV_FILE)
+  .then(raw => {
+    const parsed = buildCanonicalTeamSeasonData(raw);
+    teamData = parsed.teamData;
+    leagueData = parsed.leagueData;
+    initControls();
+    updateScene();
+  })
+  .catch(err => {
+    sceneTitle.textContent = "Data Load Error";
+    sceneDescription.innerHTML = `
+      Could not load <strong>${CSV_FILE}</strong>.<br/>
+      Open browser console to see attempted paths.
+    `;
+    console.error(err);
+  });
+
+/* -------------------- controls -------------------- */
 
 function initControls() {
   const teams = Array.from(new Set(teamData.map(d => d.team))).sort();
@@ -243,12 +230,12 @@ function initControls() {
     updateScene();
   });
 
-  rankModeSelect.addEventListener("change", e => {
+  rankModeSelect.addEventListener("change", (e) => {
     state.maxTeamsVisible = +e.target.value;
     if (state.currentScene === 1 || state.currentScene === 2) updateScene();
   });
 
-  scene4ModeSelect.addEventListener("change", e => {
+  scene4ModeSelect.addEventListener("change", (e) => {
     state.scene4Mode = e.target.value;
     if (state.scene4Mode !== "specific") {
       state.selectedTeams = [];
@@ -325,18 +312,359 @@ function updateScene() {
   sceneTitle.textContent = s.title;
   sceneDescription.textContent = s.desc;
   sceneLabel.textContent = `Scene ${state.currentScene + 1} of ${scenes.length}`;
+
   backBtn.disabled = state.currentScene === 0;
   nextBtn.disabled = state.currentScene === scenes.length - 1;
+
   setControlVisibility();
+
   g.selectAll("*").remove();
   s.render();
 }
 
-// --- keep your existing render helpers + scene renderers here unchanged ---
-function drawValueAxes() {}
-function drawCategoryAxes() {}
-function addAnnotation() {}
-function renderScene1() {}
-function renderScene2() {}
-function renderScene3() {}
-function renderScene4() {}
+/* -------------------- helpers -------------------- */
+
+function drawValueAxes({ xScale, yScale, xLabel, yLabel, xTicks = 8, yTicks = 6 }) {
+  g.append("g")
+    .attr("class", "grid")
+    .attr("transform", `translate(0,${innerH})`)
+    .call(d3.axisBottom(xScale).ticks(xTicks).tickSize(-innerH).tickFormat(""))
+    .selectAll("line").attr("opacity", 0.5);
+
+  g.append("g")
+    .attr("class", "grid")
+    .call(d3.axisLeft(yScale).ticks(yTicks).tickSize(-innerW).tickFormat(""))
+    .selectAll("line").attr("opacity", 0.5);
+
+  g.append("g")
+    .attr("class", "axis")
+    .attr("transform", `translate(0,${innerH})`)
+    .call(d3.axisBottom(xScale).ticks(xTicks).tickFormat(d3.format("d")));
+
+  g.append("g")
+    .attr("class", "axis")
+    .call(d3.axisLeft(yScale).ticks(yTicks));
+
+  g.append("text")
+    .attr("x", innerW / 2)
+    .attr("y", innerH + 58)
+    .attr("text-anchor", "middle")
+    .attr("fill", "#dce5ff")
+    .style("font-size", "15px")
+    .text(xLabel);
+
+  g.append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("x", -innerH / 2)
+    .attr("y", -60)
+    .attr("text-anchor", "middle")
+    .attr("fill", "#dce5ff")
+    .style("font-size", "15px")
+    .text(yLabel);
+}
+
+function drawCategoryAxes({ xScale, yScale, xLabel, yLabel, rotateLabels = false }) {
+  g.append("g")
+    .attr("class", "grid")
+    .call(d3.axisLeft(yScale).ticks(6).tickSize(-innerW).tickFormat(""))
+    .selectAll("line").attr("opacity", 0.5);
+
+  g.append("g")
+    .attr("class", "axis")
+    .attr("transform", `translate(0,${innerH})`)
+    .call(d3.axisBottom(xScale).tickSizeOuter(0))
+    .selectAll("text")
+    .attr("text-anchor", rotateLabels ? "end" : "middle")
+    .attr("transform", rotateLabels ? "rotate(-35)" : null)
+    .attr("dx", rotateLabels ? "-0.55em" : "0")
+    .attr("dy", rotateLabels ? "0.2em" : "1em");
+
+  g.append("g")
+    .attr("class", "axis")
+    .call(d3.axisLeft(yScale).ticks(6));
+
+  g.append("text")
+    .attr("x", innerW / 2)
+    .attr("y", innerH + (rotateLabels ? 78 : 58))
+    .attr("text-anchor", "middle")
+    .attr("fill", "#dce5ff")
+    .style("font-size", "15px")
+    .text(xLabel);
+
+  g.append("text")
+    .attr("transform", "rotate(-90)")
+    .attr("x", -innerH / 2)
+    .attr("y", -60)
+    .attr("text-anchor", "middle")
+    .attr("fill", "#dce5ff")
+    .style("font-size", "15px")
+    .text(yLabel);
+}
+
+function addAnnotation({ x, y, title, subtitle, boxX, boxY, boxW = 260, boxH = 56 }) {
+  const anchorX = x < boxX ? boxX : boxX + boxW;
+  const anchorY = boxY + boxH / 2;
+
+  g.append("line")
+    .attr("class", "annotation-line")
+    .attr("x1", x).attr("y1", y)
+    .attr("x2", anchorX).attr("y2", anchorY);
+
+  const box = g.append("g").attr("transform", `translate(${boxX}, ${boxY})`);
+  box.append("rect")
+    .attr("class", "annotation-box")
+    .attr("width", boxW)
+    .attr("height", boxH);
+
+  box.append("text")
+    .attr("class", "annotation-text")
+    .attr("x", 12).attr("y", 22)
+    .style("font-weight", "600")
+    .text(title);
+
+  box.append("text")
+    .attr("class", "annotation-text")
+    .attr("x", 12).attr("y", 42)
+    .text(subtitle);
+}
+
+/* -------------------- scenes -------------------- */
+
+function renderScene1() {
+  const x = d3.scaleLinear().domain(d3.extent(leagueData, d => d.season)).range([0, innerW]);
+  const y = d3.scaleLinear()
+    .domain([d3.min(leagueData, d => d.goalsPerGame) - 0.2, d3.max(leagueData, d => d.goalsPerGame) + 0.2])
+    .nice()
+    .range([innerH, 0]);
+
+  drawValueAxes({ xScale: x, yScale: y, xLabel: "Season", yLabel: "League Goals per Game", xTicks: 8, yTicks: 7 });
+
+  g.append("path")
+    .datum(leagueData)
+    .attr("fill", "none")
+    .attr("stroke", "#4ea3ff")
+    .attr("stroke-width", 3)
+    .attr("d", d3.line().x(d => x(d.season)).y(d => y(d.goalsPerGame)));
+
+  const low = leagueData.reduce((a, b) => (b.goalsPerGame < a.goalsPerGame ? b : a), leagueData[0]);
+  const high = leagueData.reduce((a, b) => (b.goalsPerGame > a.goalsPerGame ? b : a), leagueData[0]);
+
+  addAnnotation({
+    x: x(low.season),
+    y: y(low.goalsPerGame),
+    title: `Low point (${low.season})`,
+    subtitle: `${low.goalsPerGame.toFixed(2)} goals/game`,
+    boxX: Math.min(innerW - 270, x(low.season) + 30),
+    boxY: Math.max(8, y(low.goalsPerGame) - 70)
+  });
+
+  addAnnotation({
+    x: x(high.season),
+    y: y(high.goalsPerGame),
+    title: `High point (${high.season})`,
+    subtitle: `${high.goalsPerGame.toFixed(2)} goals/game`,
+    boxX: Math.max(8, x(high.season) - 300),
+    boxY: Math.max(8, y(high.goalsPerGame) - 20)
+  });
+}
+
+function renderScene2() {
+  const recent = teamData.filter(d => d.season >= 2018 && d.season <= 2024);
+  const avgByTeam = d3.rollups(recent, v => d3.mean(v, d => d.goalsPerGame), d => d.team)
+    .map(([team, avg]) => ({ team, avg: +avg.toFixed(3) }))
+    .sort((a, b) => b.avg - a.avg);
+
+  const shown = avgByTeam.slice(0, state.maxTeamsVisible);
+
+  const x = d3.scaleBand().domain(shown.map(d => d.team)).range([0, innerW]).padding(0.12);
+  const y = d3.scaleLinear().domain([0, d3.max(shown, d => d.avg) + 0.4]).nice().range([innerH, 0]);
+
+  drawCategoryAxes({
+    xScale: x,
+    yScale: y,
+    xLabel: state.maxTeamsVisible === 32 ? "All 32 teams (ordered by scoring)" : `Top ${state.maxTeamsVisible} teams (ordered by scoring)`,
+    yLabel: "Avg Goals per Game (2018–2024)",
+    rotateLabels: shown.length > 16
+  });
+
+  g.selectAll(".bar")
+    .data(shown)
+    .enter()
+    .append("rect")
+    .attr("x", d => x(d.team))
+    .attr("y", d => y(d.avg))
+    .attr("width", x.bandwidth())
+    .attr("height", d => Math.max(0, innerH - y(d.avg)))
+    .attr("fill", "#7fd1b9");
+
+  const top = shown[0];
+  const mid = shown[Math.floor(shown.length / 2)];
+
+  addAnnotation({
+    x: x(top.team) + x.bandwidth() / 2,
+    y: y(top.avg),
+    title: `Top team: ${top.team}`,
+    subtitle: `${top.avg.toFixed(2)} goals/game`,
+    boxX: Math.min(innerW - 270, x(top.team) + 70),
+    boxY: Math.max(8, y(top.avg) - 95)
+  });
+
+  addAnnotation({
+    x: x(mid.team) + x.bandwidth() / 2,
+    y: y(mid.avg),
+    title: `Middle of shown set: ${mid.team}`,
+    subtitle: `${mid.avg.toFixed(2)} goals/game`,
+    boxX: Math.max(8, x(mid.team) - 170),
+    boxY: Math.max(8, y(mid.avg) - 80)
+  });
+}
+
+function renderScene3() {
+  const early = teamData.filter(d => d.season >= 1995 && d.season <= 2004);
+  const modern = teamData.filter(d => d.season >= 2015 && d.season <= 2024);
+
+  const eMap = new Map(d3.rollups(early, v => d3.mean(v, d => d.goalsPerGame), d => d.team));
+  const mMap = new Map(d3.rollups(modern, v => d3.mean(v, d => d.goalsPerGame), d => d.team));
+
+  const delta = Array.from(mMap.keys()).map(team => {
+    const e = eMap.get(team);
+    const m = mMap.get(team);
+    if (e == null || m == null) return null;
+    return { team, diff: +(m - e).toFixed(3) };
+  }).filter(Boolean).sort((a, b) => b.diff - a.diff);
+
+  let shown;
+  if (state.maxTeamsVisible === 32) {
+    shown = delta;
+  } else {
+    const half = Math.floor(state.maxTeamsVisible / 2);
+    shown = [...delta.slice(0, half), ...delta.slice(-half)];
+  }
+
+  const x = d3.scaleBand().domain(shown.map(d => d.team)).range([0, innerW]).padding(0.12);
+  const yMin = Math.min(0, d3.min(shown, d => d.diff) - 0.05);
+  const yMax = Math.max(0, d3.max(shown, d => d.diff) + 0.05);
+  const y = d3.scaleLinear().domain([yMin, yMax]).nice().range([innerH, 0]);
+
+  drawCategoryAxes({
+    xScale: x,
+    yScale: y,
+    xLabel: state.maxTeamsVisible === 32 ? "All teams by era scoring change" : `Top/Bottom ${state.maxTeamsVisible / 2} teams by era scoring change`,
+    yLabel: "Change in Goals/Game (Modern - Early Era)",
+    rotateLabels: shown.length > 16
+  });
+
+  g.append("line")
+    .attr("x1", 0).attr("x2", innerW)
+    .attr("y1", y(0)).attr("y2", y(0))
+    .attr("stroke", "#d4dcf8")
+    .attr("stroke-dasharray", "4 4")
+    .attr("stroke-width", 1.5);
+
+  g.selectAll(".deltaBar")
+    .data(shown)
+    .enter()
+    .append("rect")
+    .attr("x", d => x(d.team))
+    .attr("y", d => Math.min(y(d.diff), y(0)))
+    .attr("width", x.bandwidth())
+    .attr("height", d => Math.abs(y(d.diff) - y(0)))
+    .attr("fill", d => d.diff >= 0 ? "#4ea3ff" : "#ff6b6b");
+
+  const high = shown[0];
+  const low = shown[shown.length - 1];
+
+  addAnnotation({
+    x: x(high.team) + x.bandwidth() / 2,
+    y: y(high.diff),
+    title: `Largest increase: ${high.team}`,
+    subtitle: `${high.diff.toFixed(2)} goals/game`,
+    boxX: Math.min(innerW - 270, x(high.team) + 70),
+    boxY: Math.max(8, y(high.diff) - 95)
+  });
+
+  addAnnotation({
+    x: x(low.team) + x.bandwidth() / 2,
+    y: y(low.diff),
+    title: `Smallest change: ${low.team}`,
+    subtitle: `${low.diff.toFixed(2)} goals/game`,
+    boxX: Math.max(8, x(low.team) - 220),
+    boxY: Math.max(8, y(low.diff) - 40)
+  });
+}
+
+function renderScene4() {
+  const windowed = teamData.filter(d => d.season >= state.seasonStart && d.season <= state.seasonEnd);
+
+  const teamMeans = d3.rollups(windowed, v => d3.mean(v, d => d.goalsPerGame), d => d.team)
+    .map(([team, avg]) => ({ team, avg: +avg.toFixed(3) }))
+    .sort((a, b) => b.avg - a.avg);
+
+  let teamsToShow;
+  if (state.scene4Mode === "specific") {
+    teamsToShow = state.selectedTeams;
+    if (!teamsToShow.length) {
+      g.append("text")
+        .attr("x", innerW / 2).attr("y", innerH / 2)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#ffcc4d")
+        .style("font-size", "16px")
+        .text("Choose one or more teams in Specific Teams mode.");
+      return;
+    }
+  } else {
+    const n = +state.scene4Mode; // 8 or 16
+    teamsToShow = teamMeans.slice(0, n).map(d => d.team);
+  }
+
+  const filtered = windowed.filter(d => teamsToShow.includes(d.team));
+  if (!filtered.length) return;
+
+  const x = d3.scaleLinear().domain([state.seasonStart, state.seasonEnd]).range([0, innerW]);
+  const y = d3.scaleLinear()
+    .domain([d3.min(filtered, d => d.goalsPerGame) - 0.2, d3.max(filtered, d => d.goalsPerGame) + 0.2])
+    .nice()
+    .range([innerH, 0]);
+
+  drawValueAxes({ xScale: x, yScale: y, xLabel: "Season", yLabel: "Goals per Game", xTicks: 8, yTicks: 7 });
+
+  const nested = d3.groups(filtered, d => d.team);
+  const color = d3.scaleOrdinal(d3.schemeTableau10).domain(nested.map(d => d[0]));
+
+  nested.forEach(([team, values]) => {
+    values.sort((a, b) => a.season - b.season);
+
+    g.append("path")
+      .datum(values)
+      .attr("fill", "none")
+      .attr("stroke", color(team))
+      .attr("stroke-width", 2.2)
+      .attr("d", d3.line().x(d => x(d.season)).y(d => y(d.goalsPerGame)));
+
+    g.selectAll(`.dot-${team}`)
+      .data(values)
+      .enter()
+      .append("circle")
+      .attr("cx", d => x(d.season))
+      .attr("cy", d => y(d.goalsPerGame))
+      .attr("r", 3.2)
+      .attr("fill", color(team))
+      .on("mousemove", (event, d) => {
+        tooltip.classed("hidden", false)
+          .style("left", `${event.pageX + 12}px`)
+          .style("top", `${event.pageY - 28}px`)
+          .html(`<strong>${d.team}</strong><br/>Season: ${d.season}<br/>G/GP: ${d.goalsPerGame.toFixed(2)}`);
+      })
+      .on("mouseleave", () => tooltip.classed("hidden", true));
+  });
+
+  g.append("text")
+    .attr("x", 0).attr("y", -18)
+    .attr("fill", "#ffcc4d")
+    .attr("font-size", 12)
+    .text(
+      state.scene4Mode === "specific"
+        ? `Specific Teams mode: ${state.selectedTeams.length} selected`
+        : `Showing Top ${state.scene4Mode} teams by average goals/game`
+    );
+}
