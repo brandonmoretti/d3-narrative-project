@@ -14,96 +14,167 @@ const sceneLabel = document.getElementById("sceneLabel");
 const backBtn = document.getElementById("backBtn");
 const nextBtn = document.getElementById("nextBtn");
 
-const exploreControls = document.getElementById("exploreControls");
+const sceneControls = document.getElementById("sceneControls");
+const rankModeWrap = document.getElementById("rankModeWrap");
+const rankModeSelect = document.getElementById("rankModeSelect");
+
+const scene4ModeWrap = document.getElementById("scene4ModeWrap");
+const scene4ModeSelect = document.getElementById("scene4ModeSelect");
+
 const teamControlsWrap = document.getElementById("teamControlsWrap");
 const teamSelect = document.getElementById("teamSelect");
-const maxTeamsVisibleSelect = document.getElementById("maxTeamsVisible");
+
+const yearControlsWrap = document.getElementById("yearControlsWrap");
 const startSeason = document.getElementById("startSeason");
 const endSeason = document.getElementById("endSeason");
+
 const resetExplore = document.getElementById("resetExplore");
 
 const state = {
   currentScene: 0,
-  selectedTeams: [],
+  maxTeamsVisible: 8,   // scenes 2/3: 8|16|32
+  scene4Mode: "8",      // scene 4: "8"|"16"|"specific"
+  selectedTeams: [],    // scene 4 specific mode
   seasonStart: 2005,
-  seasonEnd: 2024,
-  maxTeamsVisible: 8,      // 8 | 16 | 32
-  scene4Mode: "8"          // "8" | "16" | "32" | "specific"
+  seasonEnd: 2024
 };
 
 const scenes = [
   {
-    title: "Scene 1: A Lull in Scoring to a Stark Spike",
-    desc: "The mid-90s showed a drop in scoring coming out of the high-scoring era in the 80s, as the league became dominated by defense and goaltending. The mid-2000s were pivotal as the league shifted back to high scoring for decades to come.",
+    title: "Scene 1: NHL Scoring Trend Since 1990",
+    desc: "League scoring dipped through the late 1990s and early 2000s, then climbed in the modern era.",
     render: renderScene1
   },
   {
     title: "Scene 2: Team Averages in Recent Seasons",
-    desc: "Now we compare team scoring in the modern era. Use Show = Top 8, Top 16, or All 32 to adjust density.",
+    desc: "Compare team scoring in recent years. Use Top 8 / Top 16 / All 32 to adjust chart density.",
     render: renderScene2
   },
   {
     title: "Scene 3: Before vs. After Era Shift",
-    desc: "This scene compares each team’s early-era and modern-era scoring. Positive bars indicate stronger offense in the modern period.",
+    desc: "Each bar shows how much a team’s modern-era scoring differs from the pre-lockout era.",
     render: renderScene3
   },
   {
     title: "Scene 4: Explore the Data Yourself",
-    desc: "Choose a mode: Top 8/16/32 or Specific Teams. Team selection only appears in Specific Teams mode.",
+    desc: "Choose Top 8 / Top 16 or Specific Teams. In Specific Teams mode, pick teams and adjust the season range.",
     render: renderScene4
   }
 ];
 
-const DATA_URL = "https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/data_connectedscatter.csv";
+const DATA_URL = "nhl_gfg_pivot_1990_2024.csv";
+
+// Canonical team list we support
+const CANONICAL_TEAMS = [
+  "ANA","ARI","BOS","BUF","CAR","CBJ","CGY","CHI","COL","DAL","DET","EDM",
+  "FLA","LAK","MIN","MTL","NSH","NJD","NYI","NYR","OTT","PHI","PIT","SEA",
+  "SJS","STL","TBL","TOR","UTA","VAN","VGK","WPG","WSH"
+];
+
+// Map canonical abbreviations to possible CSV columns
+const TEAM_COLUMN_MAP = {
+  ANA: ["Anaheim Ducks", "Anaheim Ducks*", "Mighty Ducks of Anaheim", "Mighty Ducks of Anaheim*"],
+  ARI: ["Arizona Coyotes", "Arizona Coyotes*", "Phoenix Coyotes", "Phoenix Coyotes*"],
+  BOS: ["Boston Bruins", "Boston Bruins*"],
+  BUF: ["Buffalo Sabres", "Buffalo Sabres*"],
+  CAR: ["Carolina Hurricanes", "Carolina Hurricanes*", "Hartford Whalers", "Hartford Whalers*"],
+  CBJ: ["Columbus Blue Jackets", "Columbus Blue Jackets*"],
+  CGY: ["Calgary Flames", "Calgary Flames*"],
+  CHI: ["Chicago Blackhawks", "Chicago Blackhawks*"],
+  COL: ["Colorado Avalanche", "Colorado Avalanche*", "Quebec Nordiques", "Quebec Nordiques*"],
+  DAL: ["Dallas Stars", "Dallas Stars*", "Minnesota North Stars", "Minnesota North Stars*"],
+  DET: ["Detroit Red Wings", "Detroit Red Wings*"],
+  EDM: ["Edmonton Oilers", "Edmonton Oilers*"],
+  FLA: ["Florida Panthers", "Florida Panthers*"],
+  LAK: ["Los Angeles Kings", "Los Angeles Kings*"],
+  MIN: ["Minnesota Wild", "Minnesota Wild*"],
+  MTL: ["Montreal Canadiens", "Montreal Canadiens*"],
+  NSH: ["Nashville Predators", "Nashville Predators*"],
+  NJD: ["New Jersey Devils", "New Jersey Devils*"],
+  NYI: ["New York Islanders", "New York Islanders*"],
+  NYR: ["New York Rangers", "New York Rangers*"],
+  OTT: ["Ottawa Senators", "Ottawa Senators*"],
+  PHI: ["Philadelphia Flyers", "Philadelphia Flyers*"],
+  PIT: ["Pittsburgh Penguins", "Pittsburgh Penguins*"],
+  SEA: ["Seattle Kraken", "Seattle Kraken*"],
+  SJS: ["San Jose Sharks", "San Jose Sharks*"],
+  STL: ["St. Louis Blues", "St. Louis Blues*"],
+  TBL: ["Tampa Bay Lightning", "Tampa Bay Lightning*"],
+  TOR: ["Toronto Maple Leafs", "Toronto Maple Leafs*"],
+  UTA: ["Utah Hockey Club", "Utah Hockey Club*", "Arizona Coyotes", "Arizona Coyotes*", "Phoenix Coyotes", "Phoenix Coyotes*"],
+  VAN: ["Vancouver Canucks", "Vancouver Canucks*"],
+  VGK: ["Vegas Golden Knights", "Vegas Golden Knights*"],
+  WPG: ["Winnipeg Jets", "Winnipeg Jets*", "Atlanta Thrashers", "Atlanta Thrashers*"],
+  WSH: ["Washington Capitals", "Washington Capitals*"]
+};
 
 let leagueData = [];
 let teamData = [];
 
-d3.csv(DATA_URL).then(() => {
-  const seasons = d3.range(1990, 2025);
+d3.csv(DATA_URL).then(raw => {
+  const parsed = buildCanonicalTeamSeasonData(raw);
 
-  leagueData = seasons.map((s, i) => {
-    const base = 5.2 + 0.015 * (s - 1990);
-    const valley = (s >= 1997 && s <= 2004) ? -0.6 : 0;
-    const modernBoost = (s >= 2006) ? 0.25 + 0.01 * (s - 2006) : 0;
-    const jitter = ((i % 5) - 2) * 0.03;
-    return { season: s, goalsPerGame: +(base + valley + modernBoost + jitter).toFixed(2) };
-  });
-
-  const teams = [
-    "ANA","ARI","BOS","BUF","CAR","CBJ","CGY","CHI","COL","DAL","DET","EDM",
-    "FLA","LAK","MIN","MTL","NJD","NSH","NYI","NYR","OTT","PHI","PIT","SEA",
-    "SJS","STL","TBL","TOR","UTA","VAN","VGK","WPG"
-  ];
-
-  teamData = [];
-  teams.forEach((team, tIdx) => {
-    seasons.forEach((s, i) => {
-      const league = leagueData[i].goalsPerGame;
-      const teamBias = (tIdx - (teams.length - 1) / 2) * 0.025;
-      const modern = s >= 2015 ? (tIdx % 4) * 0.05 : 0;
-      const val = +(league / 2 + 0.1 + teamBias + modern + ((i + tIdx) % 4 - 1.5) * 0.03).toFixed(2);
-      teamData.push({ season: s, team, goalsPerGame: val });
-    });
-  });
+  teamData = parsed.teamData;
+  leagueData = parsed.leagueData;
 
   initControls();
   updateScene();
 }).catch(err => {
   sceneTitle.textContent = "Data Load Error";
-  sceneDescription.textContent = "Could not load the public dataset URL. Please refresh or check internet access.";
+  sceneDescription.textContent = `Could not load ${DATA_URL}. Confirm the file path/name and refresh.`;
   console.error(err);
 });
+
+function firstNumber(...vals) {
+  for (const v of vals) {
+    if (v === undefined || v === null || v === "") continue;
+    const n = +v;
+    if (!Number.isNaN(n)) return n;
+  }
+  return null;
+}
+
+function buildCanonicalTeamSeasonData(rows) {
+  const outTeam = [];
+
+  rows.forEach(r => {
+    const season = +r.Year;
+    if (Number.isNaN(season)) return;
+
+    CANONICAL_TEAMS.forEach(team => {
+      const cols = TEAM_COLUMN_MAP[team] || [];
+      const n = firstNumber(...cols.map(c => r[c]));
+      if (n !== null) {
+        outTeam.push({
+          season,
+          team,
+          goalsPerGame: +n
+        });
+      }
+    });
+  });
+
+  // League average by season across teams that existed that year
+  const league = d3.rollups(
+    outTeam,
+    v => d3.mean(v, d => d.goalsPerGame),
+    d => d.season
+  ).map(([season, goalsPerGame]) => ({ season: +season, goalsPerGame: +goalsPerGame }))
+   .sort((a, b) => a.season - b.season);
+
+  return { teamData: outTeam, leagueData: league };
+}
 
 function initControls() {
   const teams = Array.from(new Set(teamData.map(d => d.team))).sort();
   teamSelect.innerHTML = teams.map(t => `<option value="${t}">${t}</option>`).join("");
 
-  const seasons = Array.from(new Set(teamData.map(d => d.season))).sort((a,b) => a-b);
-  startSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonStart ? "selected" : ""}>${s}</option>`).join("");
-  endSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s===state.seasonEnd ? "selected" : ""}>${s}</option>`).join("");
+  const seasons = Array.from(new Set(teamData.map(d => d.season))).sort((a, b) => a - b);
+  startSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s === state.seasonStart ? "selected" : ""}>${s}</option>`).join("");
+  endSeason.innerHTML = seasons.map(s => `<option value="${s}" ${s === state.seasonEnd ? "selected" : ""}>${s}</option>`).join("");
 
-  maxTeamsVisibleSelect.value = "8";
+  rankModeSelect.value = String(state.maxTeamsVisible);
+  scene4ModeSelect.value = state.scene4Mode;
 
   backBtn.addEventListener("click", () => {
     state.currentScene = Math.max(0, state.currentScene - 1);
@@ -115,31 +186,18 @@ function initControls() {
     updateScene();
   });
 
-  maxTeamsVisibleSelect.addEventListener("change", (e) => {
-    const val = e.target.value;
+  rankModeSelect.addEventListener("change", (e) => {
+    state.maxTeamsVisible = +e.target.value;
+    if (state.currentScene === 1 || state.currentScene === 2) updateScene();
+  });
 
-    if (state.currentScene === 3) {
-      // Scene 4 mode supports specific teams
-      state.scene4Mode = val;
-      if (val === "specific") {
-        teamControlsWrap.style.display = "inline-flex";
-      } else {
-        teamControlsWrap.style.display = "none";
-        state.maxTeamsVisible = +val;
-        state.selectedTeams = [];
-        Array.from(teamSelect.options).forEach(o => { o.selected = false; });
-      }
-      updateScene();
-      return;
+  scene4ModeSelect.addEventListener("change", (e) => {
+    state.scene4Mode = e.target.value;
+    if (state.scene4Mode !== "specific") {
+      state.selectedTeams = [];
+      Array.from(teamSelect.options).forEach(o => (o.selected = false));
     }
-
-    // Scenes 2/3: only numeric values matter
-    const safeVal = (val === "specific") ? "8" : val;
-    state.maxTeamsVisible = +safeVal;
-    if (val === "specific") {
-      maxTeamsVisibleSelect.value = "8";
-    }
-    if (state.currentScene >= 1) updateScene();
+    if (state.currentScene === 3) updateScene();
   });
 
   teamSelect.addEventListener("change", () => {
@@ -166,20 +224,46 @@ function initControls() {
   });
 
   resetExplore.addEventListener("click", () => {
+    state.scene4Mode = "8";
     state.selectedTeams = [];
     state.seasonStart = 2005;
     state.seasonEnd = 2024;
-    state.maxTeamsVisible = 8;
-    state.scene4Mode = "8";
 
-    Array.from(teamSelect.options).forEach(o => { o.selected = false; });
+    scene4ModeSelect.value = "8";
     startSeason.value = "2005";
     endSeason.value = "2024";
-    maxTeamsVisibleSelect.value = "8";
-    teamControlsWrap.style.display = "none";
+    Array.from(teamSelect.options).forEach(o => (o.selected = false));
 
-    if (state.currentScene >= 1) updateScene();
+    if (state.currentScene === 3) updateScene();
   });
+}
+
+function setControlVisibility() {
+  sceneControls.classList.add("hidden");
+  rankModeWrap.classList.add("hidden");
+  scene4ModeWrap.classList.add("hidden");
+  teamControlsWrap.classList.add("hidden");
+  yearControlsWrap.classList.add("hidden");
+  resetExplore.classList.add("hidden");
+
+  if (state.currentScene === 0) return;
+
+  if (state.currentScene === 1 || state.currentScene === 2) {
+    sceneControls.classList.remove("hidden");
+    rankModeWrap.classList.remove("hidden");
+    return;
+  }
+
+  if (state.currentScene === 3) {
+    sceneControls.classList.remove("hidden");
+    scene4ModeWrap.classList.remove("hidden");
+    yearControlsWrap.classList.remove("hidden");
+    resetExplore.classList.remove("hidden");
+
+    if (state.scene4Mode === "specific") {
+      teamControlsWrap.classList.remove("hidden");
+    }
+  }
 }
 
 function updateScene() {
@@ -191,36 +275,25 @@ function updateScene() {
   backBtn.disabled = state.currentScene === 0;
   nextBtn.disabled = state.currentScene === scenes.length - 1;
 
-  // controls visible for scenes 2/3/4
-  exploreControls.classList.toggle("hidden", state.currentScene === 0);
-
-  if (state.currentScene === 3) {
-    // Scene 4: allow Specific Teams mode
-    maxTeamsVisibleSelect.value = state.scene4Mode;
-    teamControlsWrap.style.display = state.scene4Mode === "specific" ? "inline-flex" : "none";
-  } else {
-    // Scenes 2/3: hide team selector and restrict dropdown to numeric modes
-    teamControlsWrap.style.display = "none";
-    if (maxTeamsVisibleSelect.value === "specific") maxTeamsVisibleSelect.value = String(state.maxTeamsVisible);
-  }
+  setControlVisibility();
 
   g.selectAll("*").remove();
   s.render();
 }
-
-/* ---------- Axis helpers ---------- */
 
 function drawValueAxes({ xScale, yScale, xLabel, yLabel, xTicks = 8, yTicks = 6 }) {
   g.append("g")
     .attr("class", "grid")
     .attr("transform", `translate(0,${innerH})`)
     .call(d3.axisBottom(xScale).ticks(xTicks).tickSize(-innerH).tickFormat(""))
-    .selectAll("line").attr("opacity", 0.5);
+    .selectAll("line")
+    .attr("opacity", 0.5);
 
   g.append("g")
     .attr("class", "grid")
     .call(d3.axisLeft(yScale).ticks(yTicks).tickSize(-innerW).tickFormat(""))
-    .selectAll("line").attr("opacity", 0.5);
+    .selectAll("line")
+    .attr("opacity", 0.5);
 
   g.append("g")
     .attr("class", "axis")
@@ -253,7 +326,8 @@ function drawCategoryAxes({ xScale, yScale, xLabel, yLabel, rotateLabels = false
   g.append("g")
     .attr("class", "grid")
     .call(d3.axisLeft(yScale).ticks(6).tickSize(-innerW).tickFormat(""))
-    .selectAll("line").attr("opacity", 0.5);
+    .selectAll("line")
+    .attr("opacity", 0.5);
 
   g.append("g")
     .attr("class", "axis")
@@ -287,8 +361,6 @@ function drawCategoryAxes({ xScale, yScale, xLabel, yLabel, rotateLabels = false
     .text(yLabel);
 }
 
-/* ---------- Annotation helper ---------- */
-
 function addAnnotation({ x, y, title, subtitle, boxX, boxY, boxW = 260, boxH = 56 }) {
   const anchorX = x < boxX ? boxX : boxX + boxW;
   const anchorY = boxY + boxH / 2;
@@ -298,25 +370,18 @@ function addAnnotation({ x, y, title, subtitle, boxX, boxY, boxW = 260, boxH = 5
     .attr("x1", x)
     .attr("y1", y)
     .attr("x2", anchorX)
-    .attr("y2", anchorY)
-    .attr("stroke", "#ffd166")
-    .attr("stroke-width", 2);
+    .attr("y2", anchorY);
 
   const box = g.append("g").attr("transform", `translate(${boxX}, ${boxY})`);
   box.append("rect")
     .attr("class", "annotation-box")
     .attr("width", boxW)
-    .attr("height", boxH)
-    .attr("fill", "rgba(78,163,255,0.12)")
-    .attr("stroke", "#4ea3ff")
-    .attr("stroke-width", 1.5);
+    .attr("height", boxH);
 
   box.append("text")
     .attr("class", "annotation-text")
     .attr("x", 12)
     .attr("y", 22)
-    .attr("fill", "#f2f5ff")
-    .style("font-size", "12px")
     .style("font-weight", "600")
     .text(title);
 
@@ -324,17 +389,13 @@ function addAnnotation({ x, y, title, subtitle, boxX, boxY, boxW = 260, boxH = 5
     .attr("class", "annotation-text")
     .attr("x", 12)
     .attr("y", 42)
-    .attr("fill", "#f2f5ff")
-    .style("font-size", "12px")
     .text(subtitle);
 }
-
-/* ---------- Scene renders ---------- */
 
 function renderScene1() {
   const x = d3.scaleLinear().domain(d3.extent(leagueData, d => d.season)).range([0, innerW]);
   const y = d3.scaleLinear()
-    .domain([d3.min(leagueData, d => d.goalsPerGame) - 0.3, d3.max(leagueData, d => d.goalsPerGame) + 0.3])
+    .domain([d3.min(leagueData, d => d.goalsPerGame) - 0.2, d3.max(leagueData, d => d.goalsPerGame) + 0.2])
     .nice()
     .range([innerH, 0]);
 
@@ -354,32 +415,32 @@ function renderScene1() {
     .attr("stroke-width", 3)
     .attr("d", d3.line().x(d => x(d.season)).y(d => y(d.goalsPerGame)));
 
-  const low = leagueData.find(d => d.season === 2003);
-  const high = leagueData.find(d => d.season === 2022);
+  const low = leagueData.reduce((a, b) => (b.goalsPerGame < a.goalsPerGame ? b : a), leagueData[0]);
+  const high = leagueData.reduce((a, b) => (b.goalsPerGame > a.goalsPerGame ? b : a), leagueData[0]);
 
   addAnnotation({
     x: x(low.season),
     y: y(low.goalsPerGame),
-    title: "Low-scoring era",
-    subtitle: "Late 1990s to early 2000s",
-    boxX: x(low.season) + 20,
-    boxY: y(low.goalsPerGame) - 70
+    title: `Low point (${low.season})`,
+    subtitle: `${low.goalsPerGame.toFixed(2)} goals/game`,
+    boxX: Math.min(innerW - 270, x(low.season) + 30),
+    boxY: Math.max(8, y(low.goalsPerGame) - 70)
   });
 
   addAnnotation({
     x: x(high.season),
     y: y(high.goalsPerGame),
-    title: "Modern rise",
-    subtitle: "Sustained increase after 2006",
-    boxX: x(high.season) - 300,
-    boxY: y(high.goalsPerGame) - 20
+    title: `High point (${high.season})`,
+    subtitle: `${high.goalsPerGame.toFixed(2)} goals/game`,
+    boxX: Math.max(8, x(high.season) - 300),
+    boxY: Math.max(8, y(high.goalsPerGame) - 20)
   });
 }
 
 function renderScene2() {
   const recent = teamData.filter(d => d.season >= 2018 && d.season <= 2024);
   const avgByTeam = d3.rollups(recent, v => d3.mean(v, d => d.goalsPerGame), d => d.team)
-    .map(([team, avg]) => ({ team, avg }))
+    .map(([team, avg]) => ({ team, avg: +avg.toFixed(3) }))
     .sort((a, b) => b.avg - a.avg);
 
   const shown = avgByTeam.slice(0, state.maxTeamsVisible);
@@ -411,18 +472,18 @@ function renderScene2() {
   addAnnotation({
     x: x(top.team) + x.bandwidth() / 2,
     y: y(top.avg),
-    title: "Top modern offense",
-    subtitle: "Leads recent scoring",
-    boxX: Math.min(innerW - 280, x(top.team) + 80),
-    boxY: Math.max(8, y(top.avg) - 110)
+    title: `Top team: ${top.team}`,
+    subtitle: `${top.avg.toFixed(2)} goals/game`,
+    boxX: Math.min(innerW - 270, x(top.team) + 70),
+    boxY: Math.max(8, y(top.avg) - 95)
   });
 
   addAnnotation({
     x: x(mid.team) + x.bandwidth() / 2,
     y: y(mid.avg),
-    title: "Middle tier",
-    subtitle: "Competitive but less explosive",
-    boxX: Math.max(8, x(mid.team) - 160),
+    title: `Middle of shown set: ${mid.team}`,
+    subtitle: `${mid.avg.toFixed(2)} goals/game`,
+    boxX: Math.max(8, x(mid.team) - 170),
     boxY: Math.max(8, y(mid.avg) - 80)
   });
 }
@@ -434,10 +495,12 @@ function renderScene3() {
   const eMap = new Map(d3.rollups(early, v => d3.mean(v, d => d.goalsPerGame), d => d.team));
   const mMap = new Map(d3.rollups(modern, v => d3.mean(v, d => d.goalsPerGame), d => d.team));
 
-  const delta = Array.from(mMap.keys()).map(team => ({
-    team,
-    diff: +(mMap.get(team) - (eMap.get(team) || 0)).toFixed(2)
-  })).sort((a, b) => b.diff - a.diff);
+  const delta = Array.from(mMap.keys()).map(team => {
+    const e = eMap.get(team);
+    const m = mMap.get(team);
+    if (e == null || m == null) return null;
+    return { team, diff: +(m - e).toFixed(3) };
+  }).filter(Boolean).sort((a, b) => b.diff - a.diff);
 
   let shown;
   if (state.maxTeamsVisible === 32) {
@@ -455,18 +518,14 @@ function renderScene3() {
   drawCategoryAxes({
     xScale: x,
     yScale: y,
-    xLabel: state.maxTeamsVisible === 32
-      ? "All 32 teams by era scoring change"
-      : `Top/Bottom ${state.maxTeamsVisible / 2} teams by era scoring change`,
+    xLabel: state.maxTeamsVisible === 32 ? "All teams by era scoring change" : `Top/Bottom ${state.maxTeamsVisible / 2} teams by era scoring change`,
     yLabel: "Change in Goals/Game (Modern - Early Era)",
     rotateLabels: shown.length > 16
   });
 
   g.append("line")
-    .attr("x1", 0)
-    .attr("x2", innerW)
-    .attr("y1", y(0))
-    .attr("y2", y(0))
+    .attr("x1", 0).attr("x2", innerW)
+    .attr("y1", y(0)).attr("y2", y(0))
     .attr("stroke", "#d4dcf8")
     .attr("stroke-dasharray", "4 4")
     .attr("stroke-width", 1.5);
@@ -481,23 +540,23 @@ function renderScene3() {
     .attr("height", d => Math.abs(y(d.diff) - y(0)))
     .attr("fill", d => d.diff >= 0 ? "#4ea3ff" : "#ff6b6b");
 
-  const high = shown.reduce((a, b) => (b.diff > a.diff ? b : a), shown[0]);
-  const low = shown.reduce((a, b) => (b.diff < a.diff ? b : a), shown[0]);
+  const high = shown[0];
+  const low = shown[shown.length - 1];
 
   addAnnotation({
     x: x(high.team) + x.bandwidth() / 2,
     y: y(high.diff),
-    title: "Largest jump",
-    subtitle: "Biggest era-to-era increase",
-    boxX: Math.min(innerW - 290, x(high.team) + 70),
+    title: `Largest increase: ${high.team}`,
+    subtitle: `${high.diff.toFixed(2)} goals/game`,
+    boxX: Math.min(innerW - 270, x(high.team) + 70),
     boxY: Math.max(8, y(high.diff) - 95)
   });
 
   addAnnotation({
     x: x(low.team) + x.bandwidth() / 2,
     y: y(low.diff),
-    title: "Smallest jump",
-    subtitle: "Least positive / most negative shift",
+    title: `Smallest change: ${low.team}`,
+    subtitle: `${low.diff.toFixed(2)} goals/game`,
     boxX: Math.max(8, x(low.team) - 220),
     boxY: Math.max(8, y(low.diff) - 40)
   });
@@ -507,11 +566,10 @@ function renderScene4() {
   const windowed = teamData.filter(d => d.season >= state.seasonStart && d.season <= state.seasonEnd);
 
   const teamMeans = d3.rollups(windowed, v => d3.mean(v, d => d.goalsPerGame), d => d.team)
-    .map(([team, avg]) => ({ team, avg }))
-    .sort((a,b) => b.avg - a.avg);
+    .map(([team, avg]) => ({ team, avg: +avg.toFixed(3) }))
+    .sort((a, b) => b.avg - a.avg);
 
   let teamsToShow;
-
   if (state.scene4Mode === "specific") {
     teamsToShow = state.selectedTeams;
     if (teamsToShow.length === 0) {
@@ -521,15 +579,16 @@ function renderScene4() {
         .attr("text-anchor", "middle")
         .attr("fill", "#ffcc4d")
         .style("font-size", "16px")
-        .text("Choose one or more teams in “Specific Teams” mode.");
+        .text("Choose one or more teams in Specific Teams mode.");
       return;
     }
   } else {
-    const n = +state.scene4Mode;
+    const n = +state.scene4Mode; // 8 or 16
     teamsToShow = teamMeans.slice(0, n).map(d => d.team);
   }
 
   const filtered = windowed.filter(d => teamsToShow.includes(d.team));
+  if (!filtered.length) return;
 
   const x = d3.scaleLinear()
     .domain([state.seasonStart, state.seasonEnd])
@@ -556,7 +615,7 @@ function renderScene4() {
   const color = d3.scaleOrdinal(d3.schemeTableau10).domain(nested.map(d => d[0]));
 
   nested.forEach(([team, values]) => {
-    values.sort((a,b) => a.season - b.season);
+    values.sort((a, b) => a.season - b.season);
 
     g.append("path")
       .datum(values)
@@ -577,7 +636,7 @@ function renderScene4() {
         tooltip.classed("hidden", false)
           .style("left", `${event.pageX + 12}px`)
           .style("top", `${event.pageY - 28}px`)
-          .html(`<strong>${d.team}</strong><br/>Season: ${d.season}<br/>G/GP: ${d.goalsPerGame}`);
+          .html(`<strong>${d.team}</strong><br/>Season: ${d.season}<br/>G/GP: ${d.goalsPerGame.toFixed(2)}`);
       })
       .on("mouseleave", () => tooltip.classed("hidden", true));
   });
@@ -590,13 +649,6 @@ function renderScene4() {
     .text(
       state.scene4Mode === "specific"
         ? `Specific Teams mode: ${state.selectedTeams.length} selected`
-        : `Showing ${state.scene4Mode === "32" ? "All 32 teams" : `Top ${state.scene4Mode} teams`} by average goals/game`
+        : `Showing Top ${state.scene4Mode} teams by average goals/game`
     );
-
-  const legend = g.append("g").attr("transform", `translate(${innerW - 160}, 6)`);
-  nested.slice(0, 14).forEach(([team], i) => {
-    const row = legend.append("g").attr("transform", `translate(0,${i * 17})`);
-    row.append("rect").attr("width", 11).attr("height", 11).attr("fill", color(team));
-    row.append("text").attr("x", 16).attr("y", 10).attr("fill", "#dce5ff").attr("font-size", 11).text(team);
-  });
 }

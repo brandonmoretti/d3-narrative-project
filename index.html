@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NHL Scoring Story: A D3 Narrative Visualization</title>
-  <link rel="stylesheet" href="styles.css?v=6" />
+  <link rel="stylesheet" href="styles.css?v=7" />
   <script src="https://d3js.org/d3.v7.min.js"></script>
 </head>
 <body>
@@ -21,27 +21,41 @@
         <button id="nextBtn">Next ▶</button>
       </div>
 
-      <div id="exploreControls" class="hidden">
-        <label for="maxTeamsVisible">Show:</label>
-        <select id="maxTeamsVisible">
-          <option value="8" selected>Top 8</option>
-          <option value="16">Top 16</option>
-          <option value="32">All 32</option>
-          <option value="specific">Specific Teams</option>
-        </select>
+      <div id="sceneControls" class="hidden">
+        <!-- Scene 2/3 control -->
+        <span id="rankModeWrap" class="hidden">
+          <label for="rankModeSelect">Show:</label>
+          <select id="rankModeSelect">
+            <option value="8" selected>Top 8</option>
+            <option value="16">Top 16</option>
+            <option value="32">All 32</option>
+          </select>
+        </span>
 
-        <span id="teamControlsWrap" style="display:none;">
+        <!-- Scene 4 controls -->
+        <span id="scene4ModeWrap" class="hidden">
+          <label for="scene4ModeSelect">View:</label>
+          <select id="scene4ModeSelect">
+            <option value="8" selected>Top 8</option>
+            <option value="16">Top 16</option>
+            <option value="specific">Specific Teams</option>
+          </select>
+        </span>
+
+        <span id="teamControlsWrap" class="hidden">
           <label for="teamSelect">Teams (Ctrl/Cmd+Click):</label>
           <select id="teamSelect" multiple size="8"></select>
         </span>
 
-        <label for="startSeason">Start Season:</label>
-        <select id="startSeason"></select>
+        <span id="yearControlsWrap" class="hidden">
+          <label for="startSeason">Start Season:</label>
+          <select id="startSeason"></select>
 
-        <label for="endSeason">End Season:</label>
-        <select id="endSeason"></select>
+          <label for="endSeason">End Season:</label>
+          <select id="endSeason"></select>
+        </span>
 
-        <button id="resetExplore">Reset</button>
+        <button id="resetExplore" class="hidden">Reset</button>
       </div>
     </section>
 
@@ -65,6 +79,6 @@
     </p>
   </footer>
 
-  <script src="script.js?v=6"></script>
+  <script src="script.js?v=7"></script>
 </body>
 </html>
