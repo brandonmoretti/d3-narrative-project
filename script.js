@@ -32,8 +32,8 @@ const resetExplore = document.getElementById("resetExplore");
 
 const state = {
   currentScene: 0,
-  maxTeamsVisible: 8, // scenes 2/3
-  scene4Mode: "8",    // scene4: "8" | "16" | "specific"
+  maxTeamsVisible: 8,
+  scene4Mode: "8",
   selectedTeams: [],
   seasonStart: 2005,
   seasonEnd: 2024
@@ -108,6 +108,7 @@ const TEAM_COLUMN_MAP = {
 
 let leagueData = [];
 let teamData = [];
+let annotationBoxes = []; // per-scene collision map
 
 /* -------------------- data loading -------------------- */
 
@@ -167,15 +168,12 @@ function buildCanonicalTeamSeasonData(rows) {
     CANONICAL_TEAMS.forEach(team => {
       let cols = TEAM_COLUMN_MAP[team] || [];
 
-      // UTA fallback to ARI/PHX if no Utah columns
       if (team === "UTA" && (!r["Utah Hockey Club"] && !r["Utah Hockey Club*"])) {
         cols = ["Arizona Coyotes", "Arizona Coyotes*", "Phoenix Coyotes", "Phoenix Coyotes*"];
       }
 
       const val = firstNumber(...cols.map(c => r[c]));
-      if (val !== null) {
-        outTeam.push({ season, team, goalsPerGame: +val });
-      }
+      if (val !== null) outTeam.push({ season, team, goalsPerGame: +val });
     });
   });
 
@@ -183,9 +181,8 @@ function buildCanonicalTeamSeasonData(rows) {
     outTeam,
     v => d3.mean(v, d => d.goalsPerGame),
     d => d.season
-  )
-    .map(([season, goalsPerGame]) => ({ season: +season, goalsPerGame: +goalsPerGame }))
-    .sort((a, b) => a.season - b.season);
+  ).map(([season, goalsPerGame]) => ({ season: +season, goalsPerGame: +goalsPerGame }))
+   .sort((a, b) => a.season - b.season);
 
   return { teamData: outTeam, leagueData: league };
 }
@@ -200,10 +197,7 @@ loadCsvWithFallback(CSV_FILE)
   })
   .catch(err => {
     sceneTitle.textContent = "Data Load Error";
-    sceneDescription.innerHTML = `
-      Could not load <strong>${CSV_FILE}</strong>.<br/>
-      Open browser console to see attempted paths.
-    `;
+    sceneDescription.innerHTML = `Could not load <strong>${CSV_FILE}</strong>. Open console to inspect path attempts.`;
     console.error(err);
   });
 
@@ -319,6 +313,7 @@ function updateScene() {
   setControlVisibility();
 
   g.selectAll("*").remove();
+  annotationBoxes = []; // reset collision memory per scene
   s.render();
 }
 
@@ -401,30 +396,80 @@ function drawCategoryAxes({ xScale, yScale, xLabel, yLabel, rotateLabels = false
     .text(yLabel);
 }
 
-function addAnnotation({ x, y, title, subtitle, boxX, boxY, boxW = 260, boxH = 56 }) {
-  const anchorX = x < boxX ? boxX : boxX + boxW;
-  const anchorY = boxY + boxH / 2;
+function boxesOverlap(a, b, pad = 8) {
+  return !(
+    a.x + a.w + pad < b.x ||
+    b.x + b.w + pad < a.x ||
+    a.y + a.h + pad < b.y ||
+    b.y + b.h + pad < a.y
+  );
+}
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+/**
+ * Smart annotation placement:
+ * - tries several candidate positions around anchor
+ * - clamps to plot bounds
+ * - avoids overlap with previous annotations
+ */
+function placeAnnotationBox(anchorX, anchorY, boxW, boxH) {
+  const candidates = [
+    { dx: 26, dy: -boxH - 18 },   // top-right
+    { dx: -boxW - 26, dy: -boxH - 18 }, // top-left
+    { dx: 26, dy: 18 },           // bottom-right
+    { dx: -boxW - 26, dy: 18 },   // bottom-left
+    { dx: 26, dy: -boxH / 2 },    // right-mid
+    { dx: -boxW - 26, dy: -boxH / 2 }   // left-mid
+  ];
+
+  for (const c of candidates) {
+    const x = clamp(anchorX + c.dx, 6, innerW - boxW - 6);
+    const y = clamp(anchorY + c.dy, 6, innerH - boxH - 6);
+    const rect = { x, y, w: boxW, h: boxH };
+
+    const collides = annotationBoxes.some(b => boxesOverlap(rect, b, 10));
+    if (!collides) {
+      annotationBoxes.push(rect);
+      return rect;
+    }
+  }
+
+  // fallback: stack downward from top-left safe zone
+  const fallback = { x: 10, y: 10 + annotationBoxes.length * (boxH + 8), w: boxW, h: boxH };
+  fallback.y = clamp(fallback.y, 6, innerH - boxH - 6);
+  annotationBoxes.push(fallback);
+  return fallback;
+}
+
+function addAnnotationSmart({ x, y, title, subtitle, boxW = 290, boxH = 64 }) {
+  const rect = placeAnnotationBox(x, y, boxW, boxH);
+
+  const anchorX = x < rect.x ? rect.x : rect.x + rect.w;
+  const anchorY = clamp(y, rect.y + 10, rect.y + rect.h - 10);
 
   g.append("line")
     .attr("class", "annotation-line")
     .attr("x1", x).attr("y1", y)
     .attr("x2", anchorX).attr("y2", anchorY);
 
-  const box = g.append("g").attr("transform", `translate(${boxX}, ${boxY})`);
+  const box = g.append("g").attr("transform", `translate(${rect.x}, ${rect.y})`);
   box.append("rect")
     .attr("class", "annotation-box")
-    .attr("width", boxW)
-    .attr("height", boxH);
+    .attr("width", rect.w)
+    .attr("height", rect.h);
 
   box.append("text")
     .attr("class", "annotation-text")
-    .attr("x", 12).attr("y", 22)
-    .style("font-weight", "600")
+    .attr("x", 12).attr("y", 24)
+    .style("font-weight", "700")
     .text(title);
 
   box.append("text")
     .attr("class", "annotation-text")
-    .attr("x", 12).attr("y", 42)
+    .attr("x", 12).attr("y", 46)
     .text(subtitle);
 }
 
@@ -449,22 +494,18 @@ function renderScene1() {
   const low = leagueData.reduce((a, b) => (b.goalsPerGame < a.goalsPerGame ? b : a), leagueData[0]);
   const high = leagueData.reduce((a, b) => (b.goalsPerGame > a.goalsPerGame ? b : a), leagueData[0]);
 
-  addAnnotation({
-    x: x(low.season),
-    y: y(low.goalsPerGame),
-    title: `Low point (${low.season})`,
-    subtitle: `${low.goalsPerGame.toFixed(2)} goals/game`,
-    boxX: Math.min(innerW - 270, x(low.season) + 30),
-    boxY: Math.max(8, y(low.goalsPerGame) - 70)
-  });
-
-  addAnnotation({
+  addAnnotationSmart({
     x: x(high.season),
     y: y(high.goalsPerGame),
     title: `High point (${high.season})`,
-    subtitle: `${high.goalsPerGame.toFixed(2)} goals/game`,
-    boxX: Math.max(8, x(high.season) - 300),
-    boxY: Math.max(8, y(high.goalsPerGame) - 20)
+    subtitle: `${high.goalsPerGame.toFixed(2)} goals/game`
+  });
+
+  addAnnotationSmart({
+    x: x(low.season),
+    y: y(low.goalsPerGame),
+    title: `Low point (${low.season})`,
+    subtitle: `${low.goalsPerGame.toFixed(2)} goals/game`
   });
 }
 
@@ -500,22 +541,18 @@ function renderScene2() {
   const top = shown[0];
   const mid = shown[Math.floor(shown.length / 2)];
 
-  addAnnotation({
+  addAnnotationSmart({
     x: x(top.team) + x.bandwidth() / 2,
     y: y(top.avg),
     title: `Top team: ${top.team}`,
-    subtitle: `${top.avg.toFixed(2)} goals/game`,
-    boxX: Math.min(innerW - 270, x(top.team) + 70),
-    boxY: Math.max(8, y(top.avg) - 95)
+    subtitle: `${top.avg.toFixed(2)} goals/game`
   });
 
-  addAnnotation({
+  addAnnotationSmart({
     x: x(mid.team) + x.bandwidth() / 2,
     y: y(mid.avg),
     title: `Middle of shown set: ${mid.team}`,
-    subtitle: `${mid.avg.toFixed(2)} goals/game`,
-    boxX: Math.max(8, x(mid.team) - 170),
-    boxY: Math.max(8, y(mid.avg) - 80)
+    subtitle: `${mid.avg.toFixed(2)} goals/game`
   });
 }
 
@@ -574,22 +611,18 @@ function renderScene3() {
   const high = shown[0];
   const low = shown[shown.length - 1];
 
-  addAnnotation({
+  addAnnotationSmart({
     x: x(high.team) + x.bandwidth() / 2,
     y: y(high.diff),
     title: `Largest increase: ${high.team}`,
-    subtitle: `${high.diff.toFixed(2)} goals/game`,
-    boxX: Math.min(innerW - 270, x(high.team) + 70),
-    boxY: Math.max(8, y(high.diff) - 95)
+    subtitle: `${high.diff.toFixed(2)} goals/game`
   });
 
-  addAnnotation({
+  addAnnotationSmart({
     x: x(low.team) + x.bandwidth() / 2,
     y: y(low.diff),
     title: `Smallest change: ${low.team}`,
-    subtitle: `${low.diff.toFixed(2)} goals/game`,
-    boxX: Math.max(8, x(low.team) - 220),
-    boxY: Math.max(8, y(low.diff) - 40)
+    subtitle: `${low.diff.toFixed(2)} goals/game`
   });
 }
 
@@ -613,7 +646,7 @@ function renderScene4() {
       return;
     }
   } else {
-    const n = +state.scene4Mode; // 8 or 16
+    const n = +state.scene4Mode;
     teamsToShow = teamMeans.slice(0, n).map(d => d.team);
   }
 
@@ -668,7 +701,7 @@ function renderScene4() {
         : `Showing Top ${state.scene4Mode} teams by average goals/game`
     );
 
-  // Legend / key restored
+  // Legend
   const legendItems = nested.map(([team]) => team);
   const legendX = innerW - 165;
   const legendY = 8;
@@ -685,18 +718,9 @@ function renderScene4() {
     .attr("rx", 8);
 
   const legend = g.append("g").attr("transform", `translate(${legendX}, ${legendY})`);
-
   legendItems.slice(0, maxRows).forEach((team, i) => {
     const row = legend.append("g").attr("transform", `translate(0, ${i * rowH})`);
-    row.append("rect")
-      .attr("width", 11)
-      .attr("height", 11)
-      .attr("fill", color(team));
-    row.append("text")
-      .attr("x", 16)
-      .attr("y", 10)
-      .attr("fill", "#dce5ff")
-      .attr("font-size", 11)
-      .text(team);
+    row.append("rect").attr("width", 11).attr("height", 11).attr("fill", color(team));
+    row.append("text").attr("x", 16).attr("y", 10).attr("fill", "#dce5ff").attr("font-size", 11).text(team);
   });
 }
